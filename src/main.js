@@ -1,19 +1,20 @@
-const { app, BrowserWindow, ipcMain, session, Menu, Tray, nativeImage } = require('electron');
+const { app, BrowserWindow, ipcMain, session, Menu, Tray, nativeImage, shell } = require('electron');
 const path = require('path');
+const http = require('http');
+const https = require('https');
 
 // Оптимізації для мінімального споживання ресурсів
 app.commandLine.appendSwitch('disable-gpu-vsync');
 app.commandLine.appendSwitch('disable-frame-rate-limit');
-app.commandLine.appendSwitch('js-flags', '--max-old-space-size=128'); // Обмежуємо RAM
+app.commandLine.appendSwitch('js-flags', '--max-old-space-size=128');
 
 let mainWindow;
-let authWindow = null;
 let tray = null;
+let authWindow = null;
 
-// Зберігаємо cookies для авторизації
+// URLs
 const SUNO_URL = 'https://suno.com';
 const SUNO_API_URL = 'https://studio-api.prod.suno.com';
-const CLERK_URL = 'https://clerk.suno.com';
 
 function createWindow() {
   mainWindow = new BrowserWindow({
@@ -29,23 +30,20 @@ function createWindow() {
       contextIsolation: true,
       preload: path.join(__dirname, 'preload.js'),
       webSecurity: true,
-      // Оптимізації
-      backgroundThrottling: true, // Економить ресурси коли не в фокусі
+      backgroundThrottling: true,
       enableBlinkFeatures: '',
     },
     icon: path.join(__dirname, '../assets/icon.svg'),
     backgroundColor: '#1a1a2e',
-    show: false, // Показуємо після завантаження
+    show: false,
   });
 
-  // Показуємо вікно коли готове (швидший запуск)
   mainWindow.once('ready-to-show', () => {
     mainWindow.show();
   });
 
   mainWindow.loadFile(path.join(__dirname, 'renderer/index.html'));
 
-  // Мінімізація в трей замість закриття
   mainWindow.on('close', (event) => {
     if (!app.isQuitting) {
       event.preventDefault();
@@ -54,16 +52,13 @@ function createWindow() {
     return false;
   });
 
-  // Створюємо системний трей
   createTray();
 }
 
 function createTray() {
   const iconSvgPath = path.join(__dirname, '../assets/icon.svg');
   
-  // Створюємо простий трей
   try {
-    // Спробуємо завантажити SVG
     const fs = require('fs');
     const svgData = fs.readFileSync(iconSvgPath, 'utf8');
     const svgDataUrl = `data:image/svg+xml;base64,${Buffer.from(svgData).toString('base64')}`;
@@ -71,221 +66,241 @@ function createTray() {
     tray = new Tray(icon.resize({ width: 16, height: 16 }));
   } catch (e) {
     console.log('Tray icon error:', e.message);
-    // Якщо іконки немає, створюємо порожню
     const icon = nativeImage.createEmpty();
     tray = new Tray(icon);
   }
 
   const contextMenu = Menu.buildFromTemplate([
-    { 
-      label: 'Відкрити', 
-      click: () => mainWindow.show() 
-    },
-    { 
-      label: 'Play/Pause', 
-      click: () => mainWindow.webContents.send('tray-toggle-play') 
-    },
+    { label: 'Відкрити', click: () => mainWindow.show() },
+    { label: 'Play/Pause', click: () => mainWindow.webContents.send('tray-toggle-play') },
     { type: 'separator' },
-    { 
-      label: 'Вихід', 
-      click: () => {
-        app.isQuitting = true;
-        app.quit();
-      }
-    }
+    { label: 'Вихід', click: () => { app.isQuitting = true; app.quit(); } }
   ]);
 
   tray.setToolTip('Suno Desktop Player');
   tray.setContextMenu(contextMenu);
+  tray.on('click', () => mainWindow.isVisible() ? mainWindow.hide() : mainWindow.show());
+}
+
+// IPC handlers
+ipcMain.handle('minimize-window', () => mainWindow.minimize());
+ipcMain.handle('maximize-window', () => mainWindow.isMaximized() ? mainWindow.unmaximize() : mainWindow.maximize());
+ipcMain.handle('close-window', () => mainWindow.hide());
+
+// ============ АВТОРИЗАЦІЯ ЧЕРЕЗ СИСТЕМНИЙ БРАУЗЕР ============
+
+ipcMain.handle('open-auth-window', async () => {
+  return new Promise((resolve) => {
+    // Відкриваємо Suno у системному браузері
+    console.log('Opening system browser for Suno login...');
+    shell.openExternal(SUNO_URL);
+    
+    // Показуємо вікно для вставки cookies
+    showCookieInputWindow(resolve);
+  });
+});
+
+function showCookieInputWindow(resolve) {
+  if (authWindow && !authWindow.isDestroyed()) {
+    authWindow.focus();
+    return;
+  }
   
-  tray.on('click', () => {
-    mainWindow.isVisible() ? mainWindow.hide() : mainWindow.show();
+  authWindow = new BrowserWindow({
+    width: 500,
+    height: 450,
+    parent: mainWindow,
+    modal: true,
+    webPreferences: {
+      nodeIntegration: true,
+      contextIsolation: false,
+    },
+    autoHideMenuBar: true,
+    title: 'Авторизація - вставте Cookie',
+    resizable: false,
+  });
+  
+  // HTML сторінка для вводу cookie
+  const html = `
+    <!DOCTYPE html>
+    <html>
+    <head>
+      <meta charset="UTF-8">
+      <title>Авторизація Suno</title>
+      <style>
+        * { box-sizing: border-box; margin: 0; padding: 0; }
+        body { 
+          font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+          background: linear-gradient(135deg, #1a1a2e 0%, #16213e 100%);
+          color: white;
+          padding: 20px;
+          height: 100vh;
+        }
+        h2 { margin-bottom: 15px; color: #a78bfa; }
+        .instructions { 
+          background: rgba(255,255,255,0.1); 
+          padding: 15px; 
+          border-radius: 8px; 
+          margin-bottom: 15px;
+          font-size: 13px;
+          line-height: 1.5;
+        }
+        .instructions ol { margin-left: 20px; }
+        .instructions li { margin: 5px 0; }
+        .instructions code { 
+          background: rgba(0,0,0,0.3); 
+          padding: 2px 6px; 
+          border-radius: 4px;
+          font-family: monospace;
+        }
+        textarea { 
+          width: 100%; 
+          height: 120px; 
+          padding: 10px;
+          border: 2px solid #7c3aed;
+          border-radius: 8px;
+          background: rgba(255,255,255,0.1);
+          color: white;
+          font-family: monospace;
+          font-size: 12px;
+          resize: none;
+          margin-bottom: 15px;
+        }
+        textarea:focus { outline: none; border-color: #a78bfa; }
+        textarea::placeholder { color: rgba(255,255,255,0.5); }
+        .buttons { display: flex; gap: 10px; }
+        button {
+          flex: 1;
+          padding: 12px;
+          border: none;
+          border-radius: 8px;
+          font-size: 14px;
+          font-weight: bold;
+          cursor: pointer;
+          transition: all 0.2s;
+        }
+        .btn-primary { background: #7c3aed; color: white; }
+        .btn-primary:hover { background: #6d28d9; }
+        .btn-secondary { background: rgba(255,255,255,0.1); color: white; }
+        .btn-secondary:hover { background: rgba(255,255,255,0.2); }
+        .error { color: #f87171; font-size: 12px; margin-top: 10px; display: none; }
+      </style>
+    </head>
+    <body>
+      <h2>🔐 Авторизація Suno AI</h2>
+      
+      <div class="instructions">
+        <p><strong>Інструкція:</strong></p>
+        <ol>
+          <li>У браузері, що відкрився, увійдіть до свого акаунту Suno</li>
+          <li>Після входу натисніть <code>F12</code> → вкладка <code>Application</code> (або <code>Storage</code>)</li>
+          <li>Зліва виберіть <code>Cookies</code> → <code>https://suno.com</code></li>
+          <li>Знайдіть cookie <code>__session</code> і скопіюйте його <strong>Value</strong></li>
+          <li>Вставте скопійоване значення нижче</li>
+        </ol>
+      </div>
+      
+      <textarea id="cookie-input" placeholder="Вставте значення cookie __session сюди..."></textarea>
+      
+      <div class="buttons">
+        <button class="btn-secondary" onclick="cancel()">Скасувати</button>
+        <button class="btn-primary" onclick="submit()">Авторизуватися</button>
+      </div>
+      
+      <p class="error" id="error">Помилка: вставте правильне значення cookie</p>
+      
+      <script>
+        const { ipcRenderer } = require('electron');
+        
+        function submit() {
+          const value = document.getElementById('cookie-input').value.trim();
+          if (!value || value.length < 50) {
+            document.getElementById('error').style.display = 'block';
+            return;
+          }
+          ipcRenderer.send('cookie-submitted', value);
+        }
+        
+        function cancel() {
+          ipcRenderer.send('cookie-cancelled');
+        }
+        
+        document.getElementById('cookie-input').addEventListener('keydown', (e) => {
+          if (e.key === 'Enter' && e.ctrlKey) submit();
+        });
+      </script>
+    </body>
+    </html>
+  `;
+  
+  authWindow.loadURL(`data:text/html;charset=utf-8,${encodeURIComponent(html)}`);
+  
+  // Обробка відповіді
+  ipcMain.once('cookie-submitted', async (event, sessionValue) => {
+    console.log('Cookie submitted, length:', sessionValue.length);
+    
+    // Зберігаємо session cookie
+    const sunoSession = session.fromPartition('persist:suno');
+    
+    try {
+      // Зберігаємо __session cookie
+      await sunoSession.cookies.set({
+        url: SUNO_URL,
+        name: '__session',
+        value: sessionValue,
+        path: '/',
+        secure: true,
+        httpOnly: true,
+        sameSite: 'no_restriction',
+      });
+      
+      // Також зберігаємо для API
+      await sunoSession.cookies.set({
+        url: SUNO_API_URL,
+        name: '__session',
+        value: sessionValue,
+        path: '/',
+        secure: true,
+        httpOnly: true,
+        sameSite: 'no_restriction',
+      });
+      
+      console.log('Session cookie saved successfully');
+      
+      if (authWindow && !authWindow.isDestroyed()) {
+        authWindow.close();
+      }
+      resolve(true);
+    } catch (e) {
+      console.log('Error saving cookie:', e.message);
+      resolve(false);
+    }
+  });
+  
+  ipcMain.once('cookie-cancelled', () => {
+    if (authWindow && !authWindow.isDestroyed()) {
+      authWindow.close();
+    }
+    resolve(false);
+  });
+  
+  authWindow.on('closed', () => {
+    authWindow = null;
+    ipcMain.removeAllListeners('cookie-submitted');
+    ipcMain.removeAllListeners('cookie-cancelled');
   });
 }
 
-// IPC handlers для комунікації з renderer
-ipcMain.handle('minimize-window', () => {
-  mainWindow.minimize();
-});
-
-ipcMain.handle('maximize-window', () => {
-  if (mainWindow.isMaximized()) {
-    mainWindow.unmaximize();
-  } else {
-    mainWindow.maximize();
-  }
-});
-
-ipcMain.handle('close-window', () => {
-  mainWindow.hide();
-});
-
-// Отримання cookies після авторизації
-ipcMain.handle('get-suno-cookies', async () => {
-  const cookies = await session.defaultSession.cookies.get({ url: SUNO_URL });
-  return cookies;
-});
-
-// Встановлення cookies
-ipcMain.handle('set-cookies', async (event, cookies) => {
-  for (const cookie of cookies) {
-    await session.defaultSession.cookies.set({
-      url: SUNO_URL,
-      name: cookie.name,
-      value: cookie.value,
-      domain: cookie.domain,
-      path: cookie.path || '/',
-      secure: cookie.secure || true,
-      httpOnly: cookie.httpOnly || false,
-    });
-  }
-});
-
-// Відкриваємо вікно авторизації через Google/Clerk
-ipcMain.handle('open-auth-window', async () => {
-  return new Promise((resolve, reject) => {
-    if (authWindow) {
-      authWindow.focus();
-      return resolve(false);
-    }
-    
-    // Очищаємо cookies перед авторизацією щоб показати вибір акаунту
-    session.fromPartition('persist:suno').clearStorageData({
-      storages: ['cookies']
-    }).then(() => {
-      authWindow = new BrowserWindow({
-        width: 600,
-        height: 750,
-        parent: mainWindow,
-        modal: true,
-        webPreferences: {
-          nodeIntegration: false,
-          contextIsolation: true,
-          partition: 'persist:suno', // Зберігаємо cookies
-          webSecurity: true,
-        },
-        autoHideMenuBar: true,
-        title: 'Вхід до Suno AI',
-      });
-      
-      // Відкриваємо сторінку входу Suno через Clerk
-      // Відкриваємо library сторінку - вона вимагає авторизації
-      authWindow.loadURL(`${SUNO_URL}/library`);
-      
-      let authCompleted = false;
-      let initialLoad = true;
-      
-      // Слухаємо зміни URL - чекаємо на успішну авторизацію
-      const checkAuth = async (url) => {
-        console.log('Navigation URL:', url);
-        
-        // Пропускаємо перше завантаження
-        if (initialLoad) {
-          initialLoad = false;
-          console.log('Initial load, waiting for auth...');
-          return;
-        }
-        
-        // Якщо це Google OAuth callback до Clerk - користувач вибрав акаунт
-        if (url.includes('clerk.suno.com/v1/oauth_callback') || url.includes('accounts.google.com/signin/oauth')) {
-          console.log('OAuth in progress...');
-          return;
-        }
-        
-        // Якщо користувач успішно увійшов і перейшов на головну/create/library сторінку
-        if (!authCompleted && (url.includes('suno.com/create') || url.includes('suno.com/library') || url.includes('suno.com/home') || url === 'https://suno.com/' || url === 'https://suno.com')) {
-          // Невелика затримка щоб cookies встигли записатися
-          await new Promise(r => setTimeout(r, 1000));
-          
-          // Перевіряємо чи є Clerk session cookie
-          const clerkCookies = await session.fromPartition('persist:suno').cookies.get({ url: CLERK_URL });
-          const sunoCookies = await session.fromPartition('persist:suno').cookies.get({ url: SUNO_URL });
-          const allCheckCookies = [...clerkCookies, ...sunoCookies];
-          
-          const hasSession = allCheckCookies.some(c => c.name === '__session' || c.name === '__client_uat');
-          
-          console.log('Checking session - has session:', hasSession, 'total cookies:', allCheckCookies.length);
-          
-          if (hasSession) {
-            authCompleted = true;
-            console.log('Auth completed! Copying cookies...');
-            
-            // Отримуємо всі cookies
-            const allCookies = await session.fromPartition('persist:suno').cookies.get({});
-            console.log('Total cookies:', allCookies.length);
-            
-            // Копіюємо cookies в основну сесію
-            for (const cookie of allCookies) {
-              try {
-                let cookieUrl = SUNO_URL;
-                if (cookie.domain.includes('clerk')) {
-                  cookieUrl = CLERK_URL;
-                } else if (cookie.domain.includes('suno')) {
-                  cookieUrl = `https://${cookie.domain.replace(/^\./, '')}`;
-                }
-                
-                await session.defaultSession.cookies.set({
-                  url: cookieUrl,
-                  name: cookie.name,
-                  value: cookie.value,
-                  domain: cookie.domain,
-                  path: cookie.path || '/',
-                  secure: cookie.secure !== false,
-                  httpOnly: cookie.httpOnly || false,
-                  sameSite: cookie.sameSite || 'lax',
-                  expirationDate: cookie.expirationDate,
-                });
-              } catch (e) {
-                console.log('Cookie error:', e.message);
-              }
-            }
-            
-            setTimeout(() => {
-              if (authWindow && !authWindow.isDestroyed()) {
-                authWindow.close();
-              }
-            }, 500);
-            resolve(true);
-          }
-        }
-      };
-      
-      authWindow.webContents.on('did-navigate', (event, url) => checkAuth(url));
-      authWindow.webContents.on('did-navigate-in-page', (event, url) => checkAuth(url));
-      authWindow.webContents.on('did-redirect-navigation', (event, url) => checkAuth(url));
-      
-      // Відкриваємо DevTools для налагодження (можна видалити пізніше)
-      // authWindow.webContents.openDevTools();
-      
-      authWindow.on('closed', () => {
-        authWindow = null;
-        if (!authCompleted) {
-          resolve(false);
-        }
-      });
-    });
-  });
-});
-
-// Перевіряємо чи є активна сесія
+// Перевіряємо авторизацію
 ipcMain.handle('check-auth', async () => {
   try {
-    const sunoPartition = session.fromPartition('persist:suno');
+    const sunoSession = session.fromPartition('persist:suno');
+    const cookies = await sunoSession.cookies.get({ url: SUNO_URL });
     
-    // Перевіряємо cookies для Suno та Clerk
-    const sunoCookies = await sunoPartition.cookies.get({ url: SUNO_URL });
-    const clerkCookies = await sunoPartition.cookies.get({ url: CLERK_URL });
+    const sessionCookie = cookies.find(c => c.name === '__session');
     
-    // Шукаємо __session cookie від Clerk (це JWT токен авторизації)
-    const allCookies = [...sunoCookies, ...clerkCookies];
-    const sessionCookie = allCookies.find(c => c.name === '__session');
-    const clientUatCookie = allCookies.find(c => c.name === '__client_uat');
+    console.log('Check auth - session:', !!sessionCookie, 'total cookies:', cookies.length);
     
-    console.log('Check auth - session cookie:', !!sessionCookie);
-    console.log('Check auth - client_uat cookie:', !!clientUatCookie);
-    console.log('Check auth - total cookies:', allCookies.length);
-    
-    // Якщо є __session cookie - користувач авторизований
     return !!sessionCookie;
   } catch (e) {
     console.log('Check auth error:', e.message);
@@ -293,15 +308,10 @@ ipcMain.handle('check-auth', async () => {
   }
 });
 
-// Вихід з системи - очищаємо всі cookies
+// Logout
 ipcMain.handle('logout', async () => {
   try {
-    // Очищаємо сесію авторизації (persist:suno)
     await session.fromPartition('persist:suno').clearStorageData({
-      storages: ['cookies', 'localstorage', 'sessionstorage']
-    });
-    // Також очищаємо основну сесію
-    await session.defaultSession.clearStorageData({
       storages: ['cookies', 'localstorage', 'sessionstorage']
     });
     console.log('Logout completed');
@@ -312,40 +322,28 @@ ipcMain.handle('logout', async () => {
   }
 });
 
-// API запити через main процес (для уникнення CORS)
+// ============ API ЗАПИТИ ============
 ipcMain.handle('api-request', async (event, { url, method = 'GET', body = null }) => {
-  
-  return new Promise(async (resolve, reject) => {
+  return new Promise(async (resolve) => {
     try {
-      // Отримуємо cookies для API запиту з persist:suno partition
-      const sunoPartition = session.fromPartition('persist:suno');
-      const sunoCookies = await sunoPartition.cookies.get({ url: SUNO_URL });
-      const apiCookies = await sunoPartition.cookies.get({ url: SUNO_API_URL });
-      const clerkCookies = await sunoPartition.cookies.get({ url: CLERK_URL });
+      const sunoSession = session.fromPartition('persist:suno');
+      const cookies = await sunoSession.cookies.get({ url: SUNO_URL });
       
-      // Формуємо cookie string
-      const allCookies = [...sunoCookies, ...apiCookies, ...clerkCookies];
-      const uniqueCookies = allCookies.filter((cookie, index, self) => 
-        index === self.findIndex(c => c.name === cookie.name)
-      );
-      const cookieString = uniqueCookies.map(c => `${c.name}=${c.value}`).join('; ');
+      const sessionCookie = cookies.find(c => c.name === '__session');
       
-      // Знаходимо Clerk session token
-      const sessionCookie = uniqueCookies.find(c => c.name === '__session');
+      if (!sessionCookie) {
+        console.log('No session cookie found for API request');
+        resolve({ ok: false, error: 'Not authenticated', status: 401 });
+        return;
+      }
       
-      // Генеруємо browser-token як в оригінальному сайті
+      // Генеруємо headers як в браузері
       const browserToken = JSON.stringify({ timestamp: Date.now() });
       const encodedToken = Buffer.from(browserToken).toString('base64');
-      
-      // Генеруємо device-id 
       const deviceId = require('crypto').randomUUID();
       
       console.log('API Request:', url);
-      console.log('Has session cookie:', !!sessionCookie);
-      console.log('Cookie count:', uniqueCookies.length);
       
-      // Використовуємо node-fetch замість net.request для кращої сумісності з cookies
-      const https = require('https');
       const urlObj = new URL(url);
       
       const options = {
@@ -355,13 +353,20 @@ ipcMain.handle('api-request', async (event, { url, method = 'GET', body = null }
         method: method,
         headers: {
           'Accept': '*/*',
+          'Accept-Language': 'uk,en-US;q=0.9,en;q=0.8',
           'Content-Type': 'application/json',
           'Origin': SUNO_URL,
           'Referer': `${SUNO_URL}/`,
           'browser-token': `{"token":"${encodedToken}"}`,
           'device-id': deviceId,
           'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
-          'Cookie': cookieString,
+          'Cookie': `__session=${sessionCookie.value}`,
+          'sec-ch-ua': '"Not_A Brand";v="8", "Chromium";v="120"',
+          'sec-ch-ua-mobile': '?0',
+          'sec-ch-ua-platform': '"Windows"',
+          'sec-fetch-dest': 'empty',
+          'sec-fetch-mode': 'cors',
+          'sec-fetch-site': 'same-site',
         }
       };
       
@@ -374,55 +379,46 @@ ipcMain.handle('api-request', async (event, { url, method = 'GET', body = null }
         
         console.log('API Response status:', res.statusCode);
         
-        res.on('data', (chunk) => {
-          responseData += chunk;
-        });
+        res.on('data', chunk => responseData += chunk);
         
         res.on('end', () => {
           try {
             const json = JSON.parse(responseData);
             resolve({ ok: res.statusCode >= 200 && res.statusCode < 300, data: json, status: res.statusCode });
           } catch (e) {
-            console.log('Response parse error:', responseData.substring(0, 200));
-            resolve({ ok: false, error: 'Invalid JSON response', raw: responseData.substring(0, 500), status: res.statusCode });
+            console.log('Response parse error:', responseData.substring(0, 300));
+            resolve({ ok: false, error: 'Invalid JSON', raw: responseData.substring(0, 500), status: res.statusCode });
           }
         });
       });
       
-      req.on('error', (error) => {
-        console.log('API Request error:', error.message);
+      req.on('error', error => {
+        console.log('API error:', error.message);
         resolve({ ok: false, error: error.message });
       });
       
-      if (body) {
-        req.write(JSON.stringify(body));
-      }
-      
+      if (body) req.write(JSON.stringify(body));
       req.end();
+      
     } catch (error) {
-      console.log('API Handler error:', error.message);
+      console.log('API handler error:', error.message);
       resolve({ ok: false, error: error.message });
     }
   });
 });
 
+// ============ ЗАПУСК ============
 app.whenReady().then(createWindow);
 
 app.on('window-all-closed', () => {
-  if (process.platform !== 'darwin') {
-    app.quit();
-  }
+  if (process.platform !== 'darwin') app.quit();
 });
 
 app.on('activate', () => {
-  if (BrowserWindow.getAllWindows().length === 0) {
-    createWindow();
-  } else {
-    mainWindow.show();
-  }
+  if (BrowserWindow.getAllWindows().length === 0) createWindow();
+  else mainWindow.show();
 });
 
-// Очищуємо при виході
 app.on('before-quit', () => {
   app.isQuitting = true;
 });
