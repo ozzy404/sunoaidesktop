@@ -148,16 +148,25 @@ class SunoPlayer {
     
     try {
       // Завантажуємо всі треки
+      console.log('Loading all tracks...');
       const allTracks = await this.fetchUserTracks(false);
       this.tracks = allTracks;
+      console.log('Loaded all tracks:', allTracks.length);
       
       // Завантажуємо лайкнуті треки
+      console.log('Loading liked tracks...');
       const likedTracks = await this.fetchUserTracks(true);
       this.likedTracks = likedTracks;
+      console.log('Loaded liked tracks:', likedTracks.length);
       
       this.renderTracks();
+      
+      if (allTracks.length === 0) {
+        this.showNotification('Треків не знайдено. Спочатку створіть музику на suno.com');
+      }
     } catch (error) {
       console.error('Failed to load tracks:', error);
+      this.showNotification('Помилка завантаження: ' + error.message);
       // Показуємо демо дані для тестування інтерфейсу
       this.loadDemoTracks();
     }
@@ -173,36 +182,30 @@ class SunoPlayer {
       url = `${this.API_BASE}/api/feed/v2?is_liked=true&hide_disliked=true&hide_gen_stems=true&hide_studio_clips=true&page=0`;
     }
     
+    console.log('Fetching tracks from:', url);
+    
     // Використовуємо Electron API для запиту (уникаємо CORS)
     if (window.electronAPI?.apiRequest) {
       const result = await window.electronAPI.apiRequest({ url, method: 'GET' });
       
+      console.log('API Result:', result);
+      
       if (result.ok && result.data) {
-        return this.formatTracks(result.data.clips || result.data.items || []);
+        const clips = result.data.clips || result.data.items || [];
+        console.log('Got clips:', clips.length);
+        return this.formatTracks(clips);
       } else {
-        console.error('API error:', result.error);
+        console.error('API error:', result.error || result.status);
+        // Якщо 401/403 - можливо потрібна повторна авторизація
+        if (result.status === 401 || result.status === 403) {
+          this.showNotification('Сесія закінчилась. Увійдіть знову.');
+          this.logout();
+        }
         throw new Error(result.error || 'API request failed');
       }
     }
     
-    // Fallback для браузера (тестування)
-    const response = await fetch(url, {
-      method: 'GET',
-      credentials: 'include',
-      headers: {
-        'Accept': 'application/json',
-        'Content-Type': 'application/json',
-        'Origin': 'https://suno.com',
-        'Referer': 'https://suno.com/',
-      }
-    });
-
-    if (!response.ok) {
-      throw new Error('API request failed');
-    }
-
-    const data = await response.json();
-    return this.formatTracks(data.clips || data.items || []);
+    throw new Error('Electron API not available');
   }
 
   formatTracks(rawTracks) {
@@ -473,8 +476,40 @@ class SunoPlayer {
   }
 
   showNotification(message) {
-    // Проста нотифікація
+    // Показуємо нотифікацію користувачу
     console.log('Notification:', message);
+    
+    // Створюємо елемент нотифікації якщо немає
+    let notification = document.getElementById('notification');
+    if (!notification) {
+      notification = document.createElement('div');
+      notification.id = 'notification';
+      notification.style.cssText = `
+        position: fixed;
+        bottom: 100px;
+        left: 50%;
+        transform: translateX(-50%);
+        background: rgba(124, 58, 237, 0.95);
+        color: white;
+        padding: 12px 20px;
+        border-radius: 8px;
+        font-size: 14px;
+        z-index: 1000;
+        opacity: 0;
+        transition: opacity 0.3s;
+        max-width: 80%;
+        text-align: center;
+      `;
+      document.body.appendChild(notification);
+    }
+    
+    notification.textContent = message;
+    notification.style.opacity = '1';
+    
+    // Автоматично ховаємо через 4 секунди
+    setTimeout(() => {
+      notification.style.opacity = '0';
+    }, 4000);
   }
 
   // ============ Logout ============
