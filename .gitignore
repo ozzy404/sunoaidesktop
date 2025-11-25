@@ -25,3 +25,6 @@ Thumbs.db
 
 # Electron
 *.asar
+
+# Sensitive files (HAR files contain auth tokens!)
+*.har

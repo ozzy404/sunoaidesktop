@@ -7,10 +7,13 @@ app.commandLine.appendSwitch('disable-frame-rate-limit');
 app.commandLine.appendSwitch('js-flags', '--max-old-space-size=128'); // Обмежуємо RAM
 
 let mainWindow;
+let authWindow = null;
 let tray = null;
 
 // Зберігаємо cookies для авторизації
 const SUNO_URL = 'https://suno.com';
+const SUNO_API_URL = 'https://studio-api.prod.suno.com';
+const CLERK_URL = 'https://clerk.suno.com';
 
 function createWindow() {
   mainWindow = new BrowserWindow({
@@ -130,6 +133,92 @@ ipcMain.handle('set-cookies', async (event, cookies) => {
       httpOnly: cookie.httpOnly || false,
     });
   }
+});
+
+// Відкриваємо вікно авторизації через Google/Clerk
+ipcMain.handle('open-auth-window', async () => {
+  return new Promise((resolve, reject) => {
+    if (authWindow) {
+      authWindow.focus();
+      return resolve(false);
+    }
+    
+    authWindow = new BrowserWindow({
+      width: 500,
+      height: 700,
+      parent: mainWindow,
+      modal: true,
+      webPreferences: {
+        nodeIntegration: false,
+        contextIsolation: true,
+        partition: 'persist:suno', // Зберігаємо cookies
+      },
+      autoHideMenuBar: true,
+      title: 'Вхід до Suno AI',
+    });
+    
+    // Завантажуємо Suno, щоб почати авторизацію
+    authWindow.loadURL(SUNO_URL);
+    
+    // Слухаємо успішний вхід (коли URL змінюється на головну сторінку Suno)
+    authWindow.webContents.on('did-navigate', async (event, url) => {
+      // Якщо користувач успішно увійшов і перейшов на create або home
+      if (url.includes('suno.com/create') || url.includes('suno.com/home') || url === 'https://suno.com/' || url === 'https://suno.com') {
+        // Отримуємо всі cookies
+        const allCookies = await session.fromPartition('persist:suno').cookies.get({});
+        
+        // Копіюємо cookies в основну сесію
+        for (const cookie of allCookies) {
+          try {
+            await session.defaultSession.cookies.set({
+              url: cookie.domain.includes('suno') ? `https://${cookie.domain.replace(/^\./, '')}` : `https://suno.com`,
+              name: cookie.name,
+              value: cookie.value,
+              domain: cookie.domain,
+              path: cookie.path || '/',
+              secure: cookie.secure !== false,
+              httpOnly: cookie.httpOnly || false,
+              sameSite: cookie.sameSite || 'lax',
+            });
+          } catch (e) {
+            console.log('Cookie error:', e.message);
+          }
+        }
+        
+        authWindow.close();
+        resolve(true);
+      }
+    });
+    
+    authWindow.on('closed', () => {
+      authWindow = null;
+      resolve(false);
+    });
+  });
+});
+
+// Перевіряємо чи є активна сесія
+ipcMain.handle('check-auth', async () => {
+  try {
+    const cookies = await session.defaultSession.cookies.get({ url: SUNO_URL });
+    const clerkCookies = await session.defaultSession.cookies.get({ url: CLERK_URL });
+    
+    // Шукаємо Clerk session cookie
+    const hasClerkSession = clerkCookies.some(c => c.name.includes('__clerk') || c.name.includes('__session'));
+    const hasSunoCookies = cookies.length > 0;
+    
+    return hasClerkSession || hasSunoCookies;
+  } catch (e) {
+    return false;
+  }
+});
+
+// Вихід з системи - очищаємо всі cookies
+ipcMain.handle('logout', async () => {
+  await session.defaultSession.clearStorageData({
+    storages: ['cookies', 'localstorage', 'sessionstorage']
+  });
+  return true;
 });
 
 app.whenReady().then(createWindow);

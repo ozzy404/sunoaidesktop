@@ -7,6 +7,11 @@ contextBridge.exposeInMainWorld('electronAPI', {
   maximize: () => ipcRenderer.invoke('maximize-window'),
   close: () => ipcRenderer.invoke('close-window'),
   
+  // Автентифікація
+  openAuthWindow: () => ipcRenderer.invoke('open-auth-window'),
+  checkAuth: () => ipcRenderer.invoke('check-auth'),
+  logout: () => ipcRenderer.invoke('logout'),
+  
   // Cookies для авторизації
   getCookies: () => ipcRenderer.invoke('get-suno-cookies'),
   setCookies: (cookies) => ipcRenderer.invoke('set-cookies', cookies),

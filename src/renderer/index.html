@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'unsafe-inline'; style-src 'self' 'unsafe-inline'; img-src 'self' data: https:; media-src 'self' https: blob:; connect-src 'self' https://suno.com https://cdn1.suno.ai https://cdn2.suno.ai https://clerk.suno.com https://*.clerk.accounts.dev;">
+  <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'unsafe-inline'; style-src 'self' 'unsafe-inline'; img-src 'self' data: https:; media-src 'self' https: blob:; connect-src 'self' https://suno.com https://studio-api.prod.suno.com https://cdn1.suno.ai https://cdn2.suno.ai https://clerk.suno.com https://*.clerk.accounts.dev;">
   <title>Suno Desktop Player</title>
   <link rel="stylesheet" href="styles.css">
 </head>
@@ -36,7 +36,7 @@
           </svg>
           Увійти через Google
         </button>
-        <p class="hint">Використовуй той самий акаунт, що і на suno.com</p>
+        <p class="hint">Відкриється вікно авторизації Suno</p>
       </div>
     </div>
 
@@ -45,8 +45,8 @@
       <!-- Навігація -->
       <nav class="nav-tabs">
         <button class="nav-tab active" data-tab="all">Всі треки</button>
-        <button class="nav-tab" data-tab="liked">Лайкнуті</button>
-        <button class="nav-tab" data-tab="playlists">Плейлисти</button>
+        <button class="nav-tab" data-tab="liked">Лайкнуті ❤️</button>
+        <button class="nav-tab logout-btn" id="btn-logout" title="Вийти">⚙️</button>
       </nav>
 
       <!-- Список треків -->
@@ -114,17 +114,6 @@
           <div class="progress-fill" id="progress-fill"></div>
         </div>
         <span class="time-total" id="time-total">0:00</span>
-      </div>
-    </div>
-
-    <!-- Модальне вікно авторизації (WebView) -->
-    <div class="modal hidden" id="auth-modal">
-      <div class="modal-content auth-modal-content">
-        <div class="modal-header">
-          <span>Авторизація Suno AI</span>
-          <button class="modal-close" id="auth-modal-close">✕</button>
-        </div>
-        <webview id="auth-webview" src="" partition="persist:suno"></webview>
       </div>
     </div>
   </div>

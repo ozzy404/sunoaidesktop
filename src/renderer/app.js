@@ -3,15 +3,17 @@ class SunoPlayer {
   constructor() {
     this.audio = document.getElementById('audio-player');
     this.tracks = [];
+    this.likedTracks = [];
     this.currentTrackIndex = -1;
     this.isPlaying = false;
     this.isRepeat = false;
     this.currentTab = 'all';
     this.isAuthenticated = false;
     
-    // API URLs
-    this.API_BASE = 'https://studio-api.suno.ai';
+    // API URLs - оновлені на основі HAR файлу
+    this.API_BASE = 'https://studio-api.prod.suno.com';
     this.SUNO_BASE = 'https://suno.com';
+    this.CLERK_BASE = 'https://clerk.suno.com';
     
     this.init();
   }
@@ -43,10 +45,10 @@ class SunoPlayer {
 
     // Auth
     document.getElementById('btn-login')?.addEventListener('click', () => this.showAuthModal());
-    document.getElementById('auth-modal-close')?.addEventListener('click', () => this.hideAuthModal());
+    document.getElementById('btn-logout')?.addEventListener('click', () => this.logout());
 
     // Navigation tabs
-    document.querySelectorAll('.nav-tab').forEach(tab => {
+    document.querySelectorAll('.nav-tab[data-tab]').forEach(tab => {
       tab.addEventListener('click', (e) => this.switchTab(e.target.dataset.tab));
     });
 
@@ -88,78 +90,46 @@ class SunoPlayer {
   }
 
   // ============ Authentication ============
-  checkAuth() {
-    // Перевіряємо чи є збережені дані
-    const savedAuth = localStorage.getItem('suno_auth');
-    if (savedAuth) {
-      try {
-        const authData = JSON.parse(savedAuth);
-        if (authData.token && authData.expiry > Date.now()) {
-          this.isAuthenticated = true;
-          this.authToken = authData.token;
-          this.showPlayerScreen();
-          this.loadTracks();
-          return;
-        }
-      } catch (e) {
-        console.error('Auth check failed:', e);
+  async checkAuth() {
+    // Використовуємо Electron API для перевірки сесії
+    if (window.electronAPI) {
+      const isAuth = await window.electronAPI.checkAuth();
+      if (isAuth) {
+        this.isAuthenticated = true;
+        this.showPlayerScreen();
+        this.loadTracks();
+        return;
       }
     }
+    
+    // Якщо не авторизовані - показуємо екран логіну
     this.showAuthScreen();
   }
 
-  showAuthModal() {
-    const modal = document.getElementById('auth-modal');
-    const webview = document.getElementById('auth-webview');
-    
-    if (webview) {
-      webview.src = `${this.SUNO_BASE}/`;
-      
-      // Слухаємо зміни URL для відстеження авторизації
-      webview.addEventListener('did-navigate', (e) => {
-        this.checkAuthComplete(e.url);
-      });
-      
-      webview.addEventListener('did-navigate-in-page', (e) => {
-        this.checkAuthComplete(e.url);
-      });
+  async showAuthModal() {
+    // Використовуємо Electron вікно для авторизації
+    if (window.electronAPI) {
+      const success = await window.electronAPI.openAuthWindow();
+      if (success) {
+        this.isAuthenticated = true;
+        this.showPlayerScreen();
+        this.loadTracks();
+      }
     }
-    
-    modal?.classList.remove('hidden');
   }
 
   hideAuthModal() {
-    const modal = document.getElementById('auth-modal');
-    const webview = document.getElementById('auth-webview');
-    
-    modal?.classList.add('hidden');
-    if (webview) webview.src = '';
+    // Вже не потрібно - авторизація в окремому вікні
   }
 
-  async checkAuthComplete(url) {
-    // Перевіряємо чи користувач авторизувався
-    if (url.includes('suno.com') && !url.includes('sign-in') && !url.includes('sign-up')) {
-      // Спробуємо отримати cookies
-      try {
-        const cookies = await window.electronAPI?.getCookies();
-        const sessionCookie = cookies?.find(c => c.name.includes('__session') || c.name.includes('__client'));
-        
-        if (sessionCookie) {
-          this.authToken = sessionCookie.value;
-          localStorage.setItem('suno_auth', JSON.stringify({
-            token: this.authToken,
-            expiry: Date.now() + 7 * 24 * 60 * 60 * 1000 // 7 днів
-          }));
-          
-          this.isAuthenticated = true;
-          this.hideAuthModal();
-          this.showPlayerScreen();
-          this.loadTracks();
-        }
-      } catch (e) {
-        console.error('Failed to get cookies:', e);
-      }
+  async logout() {
+    if (window.electronAPI) {
+      await window.electronAPI.logout();
     }
+    this.isAuthenticated = false;
+    this.tracks = [];
+    this.likedTracks = [];
+    this.showAuthScreen();
   }
 
   showAuthScreen() {
@@ -177,9 +147,14 @@ class SunoPlayer {
     this.showLoading(true);
     
     try {
-      // Спочатку спробуємо API, якщо не працює - демо дані
-      const tracks = await this.fetchUserTracks();
-      this.tracks = tracks;
+      // Завантажуємо всі треки
+      const allTracks = await this.fetchUserTracks(false);
+      this.tracks = allTracks;
+      
+      // Завантажуємо лайкнуті треки
+      const likedTracks = await this.fetchUserTracks(true);
+      this.likedTracks = likedTracks;
+      
       this.renderTracks();
     } catch (error) {
       console.error('Failed to load tracks:', error);
@@ -190,14 +165,22 @@ class SunoPlayer {
     this.showLoading(false);
   }
 
-  async fetchUserTracks() {
-    // Suno AI API endpoint для отримання треків користувача
-    const response = await fetch(`${this.API_BASE}/api/feed/v2/?page=0`, {
+  async fetchUserTracks(likedOnly = false) {
+    // Suno AI API endpoint - на основі HAR файлу
+    let url = `${this.API_BASE}/api/feed/v2?hide_disliked=true&hide_gen_stems=true&hide_studio_clips=true&page=0`;
+    
+    if (likedOnly) {
+      url = `${this.API_BASE}/api/feed/v2?is_liked=true&hide_disliked=true&hide_gen_stems=true&hide_studio_clips=true&page=0`;
+    }
+    
+    const response = await fetch(url, {
       method: 'GET',
       credentials: 'include',
       headers: {
         'Accept': 'application/json',
         'Content-Type': 'application/json',
+        'Origin': 'https://suno.com',
+        'Referer': 'https://suno.com/',
       }
     });
 
@@ -210,15 +193,20 @@ class SunoPlayer {
   }
 
   formatTracks(rawTracks) {
+    // Формат даних на основі HAR файлу
     return rawTracks.map(track => ({
       id: track.id,
-      title: track.title || track.metadata?.prompt || 'Untitled',
+      title: track.title || 'Untitled',
       artist: track.display_name || 'Suno AI',
       cover: track.image_url || track.image_large_url || '',
-      audio: track.audio_url || track.song_path || '',
+      coverLarge: track.image_large_url || track.image_url || '',
+      audio: track.audio_url || '',
       duration: track.metadata?.duration || 0,
       liked: track.is_liked || false,
-      createdAt: track.created_at
+      playCount: track.play_count || 0,
+      tags: track.metadata?.tags || '',
+      createdAt: track.created_at,
+      status: track.status
     }));
   }
 
@@ -261,10 +249,12 @@ class SunoPlayer {
     const container = document.getElementById('tracks-list');
     const emptyState = document.getElementById('empty-state');
     
+    // Вибираємо треки залежно від вкладки
     let filteredTracks = this.tracks;
     
     if (this.currentTab === 'liked') {
-      filteredTracks = this.tracks.filter(t => t.liked);
+      // Використовуємо окремо завантажені лайкнуті треки
+      filteredTracks = this.likedTracks.length > 0 ? this.likedTracks : this.tracks.filter(t => t.liked);
     }
     
     if (filteredTracks.length === 0) {
@@ -275,13 +265,16 @@ class SunoPlayer {
     
     emptyState?.classList.add('hidden');
     
+    // Зберігаємо поточний список для навігації
+    this.currentTrackList = filteredTracks;
+    
     container.innerHTML = filteredTracks.map((track, index) => `
-      <div class="track-item ${this.currentTrackIndex === index ? 'playing' : ''}" 
+      <div class="track-item ${this.currentTrackIndex === index && this.currentTrackList === filteredTracks ? 'playing' : ''}" 
            data-index="${index}" data-id="${track.id}">
         <img class="cover" src="${track.cover}" alt="Cover" onerror="this.src='data:image/svg+xml,<svg xmlns=%22http://www.w3.org/2000/svg%22 width=%22100%22 height=%22100%22><rect fill=%22%23252542%22 width=%22100%22 height=%22100%22/><text x=%2250%22 y=%2255%22 text-anchor=%22middle%22 fill=%22%236b6b7b%22 font-size=%2240%22>🎵</text></svg>'">
         <div class="info">
           <div class="title">${this.escapeHtml(track.title)}</div>
-          <div class="meta">${this.escapeHtml(track.artist)}</div>
+          <div class="meta">${this.escapeHtml(track.artist)} • ${track.playCount || 0} plays</div>
         </div>
         <span class="duration">${this.formatTime(track.duration)}</span>
         <button class="like-btn ${track.liked ? 'liked' : ''}" data-id="${track.id}">

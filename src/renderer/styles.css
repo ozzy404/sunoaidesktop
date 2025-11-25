@@ -192,6 +192,18 @@ body {
   color: white;
 }
 
+.nav-tab.logout-btn {
+  flex: 0;
+  padding: 10px 14px;
+  opacity: 0.6;
+}
+
+.nav-tab.logout-btn:hover {
+  opacity: 1;
+  background: var(--error, #ef4444);
+  color: white;
+}
+
 /* Tracks Container */
 .tracks-container {
   flex: 1;
