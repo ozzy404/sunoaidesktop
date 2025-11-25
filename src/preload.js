@@ -12,6 +12,9 @@ contextBridge.exposeInMainWorld('electronAPI', {
   checkAuth: () => ipcRenderer.invoke('check-auth'),
   logout: () => ipcRenderer.invoke('logout'),
   
+  // API запити через main процес (уникаємо CORS)
+  apiRequest: (options) => ipcRenderer.invoke('api-request', options),
+  
   // Cookies для авторизації
   getCookies: () => ipcRenderer.invoke('get-suno-cookies'),
   setCookies: (cookies) => ipcRenderer.invoke('set-cookies', cookies),

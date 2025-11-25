@@ -173,6 +173,19 @@ class SunoPlayer {
       url = `${this.API_BASE}/api/feed/v2?is_liked=true&hide_disliked=true&hide_gen_stems=true&hide_studio_clips=true&page=0`;
     }
     
+    // Використовуємо Electron API для запиту (уникаємо CORS)
+    if (window.electronAPI?.apiRequest) {
+      const result = await window.electronAPI.apiRequest({ url, method: 'GET' });
+      
+      if (result.ok && result.data) {
+        return this.formatTracks(result.data.clips || result.data.items || []);
+      } else {
+        console.error('API error:', result.error);
+        throw new Error(result.error || 'API request failed');
+      }
+    }
+    
+    // Fallback для браузера (тестування)
     const response = await fetch(url, {
       method: 'GET',
       credentials: 'include',

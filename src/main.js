@@ -218,7 +218,78 @@ ipcMain.handle('logout', async () => {
   await session.defaultSession.clearStorageData({
     storages: ['cookies', 'localstorage', 'sessionstorage']
   });
+  // Очищаємо також сесію авторизації
+  await session.fromPartition('persist:suno').clearStorageData({
+    storages: ['cookies', 'localstorage', 'sessionstorage']
+  });
   return true;
+});
+
+// API запити через main процес (для уникнення CORS)
+ipcMain.handle('api-request', async (event, { url, method = 'GET', body = null }) => {
+  const { net } = require('electron');
+  
+  return new Promise(async (resolve, reject) => {
+    try {
+      // Отримуємо cookies для API запиту
+      const sunoCookies = await session.fromPartition('persist:suno').cookies.get({ url: SUNO_URL });
+      const apiCookies = await session.fromPartition('persist:suno').cookies.get({ url: SUNO_API_URL });
+      const clerkCookies = await session.fromPartition('persist:suno').cookies.get({ url: CLERK_URL });
+      
+      // Формуємо cookie string
+      const allCookies = [...sunoCookies, ...apiCookies, ...clerkCookies];
+      const cookieString = allCookies.map(c => `${c.name}=${c.value}`).join('; ');
+      
+      // Генеруємо browser-token
+      const browserToken = JSON.stringify({ timestamp: Date.now() });
+      const encodedToken = Buffer.from(browserToken).toString('base64');
+      
+      const request = net.request({
+        method,
+        url,
+        partition: 'persist:suno',
+      });
+      
+      request.setHeader('Accept', 'application/json');
+      request.setHeader('Content-Type', 'application/json');
+      request.setHeader('Origin', SUNO_URL);
+      request.setHeader('Referer', `${SUNO_URL}/`);
+      request.setHeader('browser-token', `{"token":"${encodedToken}"}`);
+      
+      if (cookieString) {
+        request.setHeader('Cookie', cookieString);
+      }
+      
+      let responseData = '';
+      
+      request.on('response', (response) => {
+        response.on('data', (chunk) => {
+          responseData += chunk.toString();
+        });
+        
+        response.on('end', () => {
+          try {
+            const json = JSON.parse(responseData);
+            resolve({ ok: true, data: json });
+          } catch (e) {
+            resolve({ ok: false, error: 'Invalid JSON response' });
+          }
+        });
+      });
+      
+      request.on('error', (error) => {
+        resolve({ ok: false, error: error.message });
+      });
+      
+      if (body) {
+        request.write(JSON.stringify(body));
+      }
+      
+      request.end();
+    } catch (error) {
+      resolve({ ok: false, error: error.message });
+    }
+  });
 });
 
 app.whenReady().then(createWindow);
