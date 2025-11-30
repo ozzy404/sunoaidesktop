@@ -131,21 +131,54 @@ function createWindow() {
       }
     };
     
-    const cx = 16, cy = 16, r = 14;
+    const cx = 16, cy = 16;
+    
+    // Outer glow circle (r=15, opacity 0.2)
     for (let y = 0; y < size; y++) {
       for (let x = 0; x < size; x++) {
-        const dx = x - cx, dy = y - cy;
-        if (Math.sqrt(dx * dx + dy * dy) <= r) {
+        const dist = Math.sqrt((x - cx) ** 2 + (y - cy) ** 2);
+        if (dist <= 15 && dist > 14) {
           const t = (x + y) / (size * 2);
-          setPixel(x, y, Math.floor(124 + t * 44), Math.floor(58 + t * 27), Math.floor(237 + t * 10), 255);
+          const r = Math.floor(124 + t * 44);
+          const g = Math.floor(58 + t * 27);
+          const b = Math.floor(237 + t * 10);
+          setPixel(x, y, r, g, b, 51); // 0.2 opacity = 51
         }
       }
     }
     
-    [[8, 11, 21], [12, 9, 23], [16, 7, 25], [20, 9, 23], [24, 11, 21]].forEach(([bx, y1, y2]) => {
-      for (let y = y1; y <= y2; y++) {
+    // Main circle (r=14) with gradient
+    for (let y = 0; y < size; y++) {
+      for (let x = 0; x < size; x++) {
+        const dist = Math.sqrt((x - cx) ** 2 + (y - cy) ** 2);
+        if (dist <= 14) {
+          const t = (x + y) / (size * 2);
+          // Gradient from #7c3aed to #a855f7
+          const r = Math.floor(124 + t * 44);
+          const g = Math.floor(58 + t * 27);
+          const b = Math.floor(237 + t * 10);
+          setPixel(x, y, r, g, b, 255);
+        }
+      }
+    }
+    
+    // 5 equalizer bars (#ec4899 = 236, 72, 153) - centered positions from SVG
+    // Bar positions scaled: x/32 ratio, width ~2.4px
+    const bars = [
+      { x: 6.2, y1: 11, y2: 21 },   // height 10
+      { x: 10.5, y1: 9, y2: 23 },   // height 14
+      { x: 14.8, y1: 6, y2: 26 },   // height 20
+      { x: 19.1, y1: 9, y2: 23 },   // height 14
+      { x: 23.4, y1: 11, y2: 21 }   // height 10
+    ];
+    
+    bars.forEach(bar => {
+      const bx = Math.floor(bar.x);
+      for (let y = bar.y1; y < bar.y2; y++) {
+        // Width ~2.4px = draw 2-3 pixels
         setPixel(bx, y, 236, 72, 153, 255);
-        setPixel(bx - 1, y, 236, 72, 153, 255);
+        setPixel(bx + 1, y, 236, 72, 153, 255);
+        setPixel(bx + 2, y, 236, 72, 153, 200); // Slight fade for antialiasing
       }
     });
     
@@ -209,17 +242,37 @@ function createTray() {
       }
     };
     
-    const cx = 8, cy = 8, r = 7;
+    const cx = 8, cy = 8;
+    
+    // Main circle with gradient (scaled to 16px)
     for (let y = 0; y < size; y++) {
       for (let x = 0; x < size; x++) {
-        if (Math.sqrt((x - cx) ** 2 + (y - cy) ** 2) <= r) {
-          setPixel(x, y, 124, 58, 237, 255);
+        const dist = Math.sqrt((x - cx) ** 2 + (y - cy) ** 2);
+        if (dist <= 7) {
+          const t = (x + y) / (size * 2);
+          // Gradient from #7c3aed to #a855f7
+          const r = Math.floor(124 + t * 44);
+          const g = Math.floor(58 + t * 27);
+          const b = Math.floor(237 + t * 10);
+          setPixel(x, y, r, g, b, 255);
         }
       }
     }
     
-    [[4, 5, 10], [6, 4, 11], [8, 3, 12], [10, 4, 11], [12, 5, 10]].forEach(([bx, y1, y2]) => {
-      for (let y = y1; y <= y2; y++) setPixel(bx, y, 236, 72, 153, 255);
+    // 5 equalizer bars scaled to 16px (positions halved from 32px)
+    const bars = [
+      { x: 3, y1: 5, y2: 10 },    // height 5
+      { x: 5, y1: 4, y2: 11 },    // height 7
+      { x: 7, y1: 3, y2: 13 },    // height 10
+      { x: 9, y1: 4, y2: 11 },    // height 7
+      { x: 11, y1: 5, y2: 10 }    // height 5
+    ];
+    
+    bars.forEach(bar => {
+      for (let y = bar.y1; y < bar.y2; y++) {
+        setPixel(bar.x, y, 236, 72, 153, 255);
+        setPixel(bar.x + 1, y, 236, 72, 153, 255);
+      }
     });
     
     try {
