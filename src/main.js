@@ -21,32 +21,65 @@ const SUNO_URL = 'https://suno.com';
 const SUNO_API_URL = 'https://studio-api.prod.suno.com';
 
 function createWindow() {
-  // Create app icon from embedded data for cross-platform support
-  const appIconSvg = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 256 256">
-    <defs>
-      <linearGradient id="bg" x1="0%" y1="0%" x2="100%" y2="100%">
-        <stop offset="0%" style="stop-color:#7c3aed"/>
-        <stop offset="100%" style="stop-color:#a855f7"/>
-      </linearGradient>
-    </defs>
-    <circle cx="128" cy="128" r="120" fill="url(#bg)"/>
-    <g fill="none" stroke="#ec4899" stroke-width="12" stroke-linecap="round">
-      <line x1="75" y1="90" x2="75" y2="166"/>
-      <line x1="103" y1="70" x2="103" y2="186"/>
-      <line x1="131" y1="50" x2="131" y2="206"/>
-      <line x1="159" y1="70" x2="159" y2="186"/>
-      <line x1="187" y1="90" x2="187" y2="166"/>
-    </g>
-  </svg>`;
+  // Create app icon programmatically (32x32 for window, will be resized)
+  const createAppIcon = () => {
+    const size = 32;
+    const pixels = Buffer.alloc(size * size * 4, 0);
+    
+    const setPixel = (x, y, r, g, b, a) => {
+      if (x >= 0 && x < size && y >= 0 && y < size) {
+        const idx = (y * size + x) * 4;
+        pixels[idx] = r;
+        pixels[idx + 1] = g;
+        pixels[idx + 2] = b;
+        pixels[idx + 3] = a;
+      }
+    };
+    
+    // Draw circle background (purple gradient approximation)
+    const cx = 16, cy = 16, r = 14;
+    for (let y = 0; y < size; y++) {
+      for (let x = 0; x < size; x++) {
+        const dx = x - cx, dy = y - cy;
+        const dist = Math.sqrt(dx * dx + dy * dy);
+        if (dist <= r) {
+          // Purple gradient: #7c3aed to #a855f7
+          const t = (x + y) / (size * 2);
+          const rr = Math.floor(124 + t * (168 - 124));
+          const gg = Math.floor(58 + t * (85 - 58));
+          const bb = Math.floor(237 + t * (247 - 237));
+          setPixel(x, y, rr, gg, bb, 255);
+        }
+      }
+    }
+    
+    // Draw sound wave bars (pink #ec4899)
+    const barColor = [236, 72, 153, 255];
+    const bars = [
+      { x: 8, y1: 11, y2: 21 },
+      { x: 12, y1: 9, y2: 23 },
+      { x: 16, y1: 7, y2: 25 },
+      { x: 20, y1: 9, y2: 23 },
+      { x: 24, y1: 11, y2: 21 }
+    ];
+    
+    bars.forEach(bar => {
+      for (let y = bar.y1; y <= bar.y2; y++) {
+        setPixel(bar.x, y, ...barColor);
+        setPixel(bar.x - 1, y, ...barColor);
+      }
+    });
+    
+    try {
+      return nativeImage.createFromBuffer(pixels, { width: size, height: size });
+    } catch (e) {
+      console.log('App icon creation error:', e.message);
+      return nativeImage.createEmpty();
+    }
+  };
   
-  let appIcon;
-  try {
-    const iconDataUrl = `data:image/svg+xml;base64,${Buffer.from(appIconSvg).toString('base64')}`;
-    appIcon = nativeImage.createFromDataURL(iconDataUrl);
-  } catch (e) {
-    console.log('Failed to create app icon:', e.message);
-    appIcon = nativeImage.createEmpty();
-  }
+  const appIcon = createAppIcon();
+  console.log('App icon size:', appIcon.getSize());
   
   mainWindow = new BrowserWindow({
     width: 400,
@@ -89,22 +122,59 @@ function createWindow() {
 }
 
 function createTray() {
-  // Simple tray icon SVG
-  const trayIconSvg = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 16 16">
-    <circle cx="8" cy="8" r="7" fill="#7c3aed"/>
-    <g fill="none" stroke="#ec4899" stroke-width="1.5" stroke-linecap="round">
-      <line x1="4" y1="5" x2="4" y2="11"/>
-      <line x1="6" y1="4" x2="6" y2="12"/>
-      <line x1="8" y1="3" x2="8" y2="13"/>
-      <line x1="10" y1="4" x2="10" y2="12"/>
-      <line x1="12" y1="5" x2="12" y2="11"/>
-    </g>
-  </svg>`;
+  // Create tray icon programmatically (16x16)
+  const createTrayIcon = () => {
+    const size = 16;
+    const pixels = Buffer.alloc(size * size * 4, 0);
+    
+    const setPixel = (x, y, r, g, b, a) => {
+      if (x >= 0 && x < size && y >= 0 && y < size) {
+        const idx = (y * size + x) * 4;
+        pixels[idx] = r;
+        pixels[idx + 1] = g;
+        pixels[idx + 2] = b;
+        pixels[idx + 3] = a;
+      }
+    };
+    
+    // Draw circle background (purple)
+    const cx = 8, cy = 8, r = 7;
+    for (let y = 0; y < size; y++) {
+      for (let x = 0; x < size; x++) {
+        const dx = x - cx, dy = y - cy;
+        if (Math.sqrt(dx * dx + dy * dy) <= r) {
+          setPixel(x, y, 124, 58, 237, 255); // #7c3aed
+        }
+      }
+    }
+    
+    // Draw sound wave bars (pink)
+    const barColor = [236, 72, 153, 255];
+    const bars = [
+      { x: 4, y1: 5, y2: 10 },
+      { x: 6, y1: 4, y2: 11 },
+      { x: 8, y1: 3, y2: 12 },
+      { x: 10, y1: 4, y2: 11 },
+      { x: 12, y1: 5, y2: 10 }
+    ];
+    
+    bars.forEach(bar => {
+      for (let y = bar.y1; y <= bar.y2; y++) {
+        setPixel(bar.x, y, ...barColor);
+      }
+    });
+    
+    try {
+      return nativeImage.createFromBuffer(pixels, { width: size, height: size });
+    } catch (e) {
+      console.log('Tray icon creation error:', e.message);
+      return nativeImage.createEmpty();
+    }
+  };
   
   try {
-    const iconDataUrl = `data:image/svg+xml;base64,${Buffer.from(trayIconSvg).toString('base64')}`;
-    const icon = nativeImage.createFromDataURL(iconDataUrl);
-    tray = new Tray(icon.resize({ width: 16, height: 16 }));
+    const icon = createTrayIcon();
+    tray = new Tray(icon);
   } catch (e) {
     console.log('Tray icon error:', e.message);
     tray = new Tray(nativeImage.createEmpty());
@@ -136,30 +206,72 @@ ipcMain.on('playback-state-changed', (event, isPlaying) => {
 function setupThumbarButtons(isPlaying) {
   if (process.platform !== 'win32' || !mainWindow) return;
   
-  // Pre-encoded 16x16 PNG icons as base64 (white icons on transparent background)
-  // These are actual PNG files encoded, not SVG
-  const icons = {
-    prev: 'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAABAAAAAQCAYAAAAf8/9hAAAASklEQVQ4T2NkoBAwUqifYdQAhtEwIBgGf/78+Q+yC+Q2BgYGBqK9ADKAkZHx/+/fv/8T7YL///8zgFwAcwHRXiDogtGESDQMAADLzhIRVjlyLQAAAABJRU5ErkJggg==',
-    play: 'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAABAAAAAQCAYAAAAf8/9hAAAAPklEQVQ4T2NkoBAwUqifYRgY8OfPn/8gNxDrBZCBjIyM/3///k2cF/7//8/w+/dvBlJdQHR4DAsDWPxUdQEAhx0SEW4gD/EAAAAASUVORK5CYII=',
-    pause: 'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAABAAAAAQCAYAAAAf8/9hAAAALklEQVQ4T2NkoBAwUqifYdQAhtEwGHhhQEoYgOIepAZSXTBqADZfkRqZpLoAAKhyChFWJjr3AAAAAElFTkSuQmCC',
-    next: 'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAABAAAAAQCAYAAAAf8/9hAAAATElEQVQ4T2NkoBAwUqifgWgD/vz58x/kNgYGBoZRLyAPA0bG/////v37N/FeALuAmDD4/5+B4fdvBqJdQHQYkBIGsPipuhcAAHMuEhFCPNs1AAAAAElFTkSuQmCC'
-  };
-  
-  const createIcon = (type) => {
+  // Create icons using nativeImage.createFromBuffer with RGBA pixel data
+  // 16x16 icons with white shapes on transparent background
+  const createPixelIcon = (type) => {
+    const size = 16;
+    const pixels = Buffer.alloc(size * size * 4, 0); // RGBA
+    
+    const setPixel = (x, y, r, g, b, a) => {
+      if (x >= 0 && x < size && y >= 0 && y < size) {
+        const idx = (y * size + x) * 4;
+        pixels[idx] = r;
+        pixels[idx + 1] = g;
+        pixels[idx + 2] = b;
+        pixels[idx + 3] = a;
+      }
+    };
+    
+    const fillRect = (x1, y1, x2, y2) => {
+      for (let y = y1; y <= y2; y++) {
+        for (let x = x1; x <= x2; x++) {
+          setPixel(x, y, 255, 255, 255, 255);
+        }
+      }
+    };
+    
+    if (type === 'prev') {
+      // Left bar
+      fillRect(3, 3, 5, 12);
+      // Triangle pointing left
+      for (let i = 0; i < 6; i++) {
+        fillRect(12 - i, 5 + i, 12, 5 + i);
+        fillRect(12 - i, 10 - i, 12, 10 - i);
+      }
+    } else if (type === 'play') {
+      // Triangle pointing right
+      for (let i = 0; i < 7; i++) {
+        fillRect(4 + i, 3 + i, 4 + i, 12 - i);
+      }
+    } else if (type === 'pause') {
+      // Two vertical bars
+      fillRect(4, 3, 6, 12);
+      fillRect(9, 3, 11, 12);
+    } else if (type === 'next') {
+      // Triangle pointing right
+      for (let i = 0; i < 6; i++) {
+        fillRect(3, 5 + i, 3 + i, 5 + i);
+        fillRect(3, 10 - i, 3 + i, 10 - i);
+      }
+      // Right bar
+      fillRect(10, 3, 12, 12);
+    }
+    
     try {
-      const img = nativeImage.createFromDataURL(icons[type]);
-      // Ensure proper size for Windows taskbar
-      return img.resize({ width: 16, height: 16 });
+      return nativeImage.createFromBuffer(pixels, { width: size, height: size });
     } catch (e) {
-      console.log('Icon creation error for', type, ':', e.message);
+      console.log('Pixel icon creation error:', e.message);
       return nativeImage.createEmpty();
     }
   };
   
-  const prevIcon = createIcon('prev');
-  const playIcon = createIcon('play');
-  const pauseIcon = createIcon('pause');
-  const nextIcon = createIcon('next');
+  const prevIcon = createPixelIcon('prev');
+  const playIcon = createPixelIcon('play');
+  const pauseIcon = createPixelIcon('pause');
+  const nextIcon = createPixelIcon('next');
+  
+  // Debug: check if icons are valid
+  console.log('Icon sizes - prev:', prevIcon.getSize(), 'play:', playIcon.getSize(), 'pause:', pauseIcon.getSize(), 'next:', nextIcon.getSize());
   
   try {
     const buttons = [
@@ -180,8 +292,8 @@ function setupThumbarButtons(isPlaying) {
       }
     ];
     
-    mainWindow.setThumbarButtons(buttons);
-    console.log('Thumbar buttons set successfully, isPlaying:', isPlaying);
+    const result = mainWindow.setThumbarButtons(buttons);
+    console.log('Thumbar buttons set result:', result, 'isPlaying:', isPlaying);
   } catch (e) {
     console.log('Error setting thumbar buttons:', e.message);
   }
