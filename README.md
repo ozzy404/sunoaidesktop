@@ -1,46 +1,50 @@
 # Suno Desktop Player 🎵
 
-Легкий десктопний плеєр для прослуховування музики з Suno AI.
+Lightweight desktop player for listening to music from Suno AI.
+
+🌐 **Language:** [Українська](README_UA.md) | [Русский](README_RU.md)
 
 ![Suno Desktop Player](https://img.shields.io/badge/version-1.0.0-purple)
 ![Platform](https://img.shields.io/badge/platform-Windows%20%7C%20macOS%20%7C%20Linux-blue)
 ![License](https://img.shields.io/badge/license-MIT-green)
 
-## ✨ Можливості
+## ✨ Features
 
-- 🔐 Авторизація через Google (Suno AI акаунт)
-- 🎵 Прослуховування всіх згенерованих треків
-- ❤️ Перегляд лайкнутих пісень
-- 🔁 Режим повтору пісні
-- 🎛️ Контроль гучності
-- ⌨️ Гарячі клавіші (Space - play/pause, ←/→ - треки)
-- 📊 Мінімальне споживання ресурсів
-- 🖥️ Мінімізація в системний трей
+- 🔐 Authorization via Google (Suno AI account)
+- 🎵 Listen to all generated tracks
+- ❤️ View liked songs
+- 🔁 Track repeat mode
+- 🎛️ Volume control
+- ⌨️ Keyboard shortcuts (Space - play/pause, ←/→ - tracks)
+- 📊 Minimal resource consumption
+- 🖥️ System tray minimization
+- 🌐 Multi-language support (English, Ukrainian, Russian)
+- 🎨 Windows taskbar thumbnail controls
 
-## 🚀 Встановлення
+## 🚀 Installation
 
-### Завантажити готовий білд
-Перейдіть в [Releases](../../releases) та завантажте версію для вашої ОС.
+### Download ready build
+Go to [Releases](../../releases) and download the version for your OS.
 
-### Збірка з вихідного коду
+### Build from source
 
-1. Клонуйте репозиторій:
+1. Clone the repository:
 ```bash
 git clone https://github.com/ozzy404/sunoaidesktop.git
 cd sunoaidesktop
 ```
 
-2. Встановіть залежності:
+2. Install dependencies:
 ```bash
 npm install
 ```
 
-3. Запустіть для розробки:
+3. Run for development:
 ```bash
 npm start
 ```
 
-4. Зібрати для вашої платформи:
+4. Build for your platform:
 ```bash
 # Windows
 npm run build:win
@@ -52,99 +56,103 @@ npm run build:mac
 npm run build:linux
 ```
 
-## 🎮 Гарячі клавіші
+## 🎮 Keyboard Shortcuts
 
-| Клавіша | Дія |
-|---------|-----|
+| Key | Action |
+|-----|--------|
 | `Space` | Play/Pause |
-| `→` | Наступний трек |
-| `←` | Попередній трек |
+| `→` | Next track |
+| `←` | Previous track |
 
-## 🛠️ Технології
+## 🛠️ Technologies
 
-- **Electron** - кросплатформенний десктопний фреймворк
-- **Vanilla JS** - без зайвих бібліотек для швидкості
-- **CSS3** - сучасний інтерфейс
+- **Electron** - cross-platform desktop framework
+- **Vanilla JS** - no extra libraries for speed
+- **CSS3** - modern interface
 
-## 📁 Структура проекту
+## 📁 Project Structure
 
 ```
 sunoaidesktop/
 ├── src/
 │   ├── main.js          # Electron main process
-│   ├── preload.js       # Preload script для безпеки
+│   ├── preload.js       # Preload script for security
 │   └── renderer/
-│       ├── index.html   # Головна сторінка
-│       ├── styles.css   # Стилі
-│       └── app.js       # Логіка плеєра
+│       ├── index.html   # Main page
+│       ├── styles.css   # Styles
+│       ├── i18n.js      # Internationalization
+│       └── app.js       # Player logic
 ├── assets/
-│   └── icon.png         # Іконка додатку
+│   └── icon.png         # App icon
 ├── package.json
 └── README.md
 ```
 
-## ⚙️ Як користуватися
+## ⚙️ How to Use
 
-Після першого запуску:
-1. Натисніть "Увійти через Google"
-2. Відкриється сторінка Suno - натисніть "Sign In" у верхньому правому куті
-3. Виберіть "Continue with Google" та виберіть свій акаунт
-4. Після успішного входу вікно автоматично закриється
-5. Насолоджуйтесь музикою! 🎶
+After first launch:
+1. Click "Sign in with Google"
+2. Suno page will open - click "Sign In" in the top right corner
+3. Choose "Continue with Google" and select your account
+4. Open DevTools (F12) → Console tab
+5. Paste the code from the app to copy the JWT token
+6. Paste the token in the app window
+7. Enjoy the music! 🎶
 
-**Примітка:** Якщо треки не завантажуються - спробуйте вийти та увійти знову.
+**Note:** Token is valid for ~1 hour. Re-authenticate when it expires.
 
-## 🔒 Безпека
+## 🌐 Language Settings
 
-- Всі дані зберігаються локально
-- Використовується захищений WebView для авторизації
-- Контекстна ізоляція увімкнена
+The app automatically detects your system language. You can also change it manually:
+1. Click the ⚙️ settings button
+2. Select your preferred language from the dropdown
+3. The interface will update immediately
 
-## 🐛 Відомі проблеми та рішення
+Supported languages:
+- 🇬🇧 English (default)
+- 🇺🇦 Ukrainian
+- 🇷🇺 Russian
 
-### "API request failed" після авторизації
+## 🔒 Security
 
-**Причина:** Використовується застаріла версія `src/main.js`
+- All data is stored locally
+- Secure WebView is used for authorization
+- Context isolation is enabled
 
-**Рішення:**
-1. Завантажте останню версію з GitHub (Code → Download ZIP)
-2. Замініть файл `src/main.js` у вашій папці
-3. Перезапустіть програму: `npm start`
+## 🐛 Known Issues & Solutions
 
-**Або** запустіть скрипт перевірки (Windows):
-```bash
-check-version.bat
-```
+### "API request failed" after authorization
 
-Детальні інструкції: [UPDATE_INSTRUCTIONS.md](UPDATE_INSTRUCTIONS.md)
+**Cause:** Outdated version of `src/main.js`
 
-### Треки не завантажуються
+**Solution:**
+1. Download the latest version from GitHub (Code → Download ZIP)
+2. Replace the `src/main.js` file in your folder
+3. Restart the app: `npm start`
 
-- Спробуйте перелогінитися (⚙️ → Вийти)
-- Перевірте підключення до інтернету
-- Переконайтесь що ваш акаунт Suno активний
+### Tracks not loading
 
-### При першій авторизації може знадобитися перезапуск додатку
-
-- Деякі треки можуть бути недоступні через обмеження API
+- Try re-logging (⚙️ → Log out)
+- Check your internet connection
+- Make sure your Suno account is active
 
 ## 📝 TODO
 
-- [ ] Додати плейлисти
-- [ ] Офлайн кешування треків
-- [ ] Еквалайзер
-- [ ] Підтримка медіа-клавіш
+- [ ] Add playlists
+- [ ] Offline track caching
+- [ ] Equalizer
+- [ ] Media key support
 
-## 📄 Ліцензія
+## 📄 License
 
-MIT License - використовуйте як хочете!
+MIT License - use as you wish!
 
-## 🤝 Внески
+## 🤝 Contributing
 
-Pull requests вітаються! Для великих змін спочатку створіть issue.
+Pull requests are welcome! For major changes, please open an issue first.
 
 ---
 
-**Автор:** [ozzy404](https://github.com/ozzy404)
+**Author:** [ozzy404](https://github.com/ozzy404)
 
-*Не є офіційним продуктом Suno AI*
+*Not an official Suno AI product*

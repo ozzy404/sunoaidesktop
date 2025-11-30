@@ -1,9 +1,8 @@
 const { app, BrowserWindow, ipcMain, session, Menu, Tray, nativeImage, shell } = require('electron');
 const path = require('path');
-const http = require('http');
 const https = require('https');
 
-// Оптимізації для мінімального споживання ресурсів
+// Performance optimizations
 app.commandLine.appendSwitch('disable-gpu-vsync');
 app.commandLine.appendSwitch('disable-frame-rate-limit');
 app.commandLine.appendSwitch('js-flags', '--max-old-space-size=128');
@@ -12,7 +11,7 @@ let mainWindow;
 let tray = null;
 let authWindow = null;
 
-// Зберігаємо JWT токен (кеш)
+// JWT token cache
 let cachedJwtToken = null;
 let jwtTokenExpiry = 0;
 
@@ -20,8 +19,90 @@ let jwtTokenExpiry = 0;
 const SUNO_URL = 'https://suno.com';
 const SUNO_API_URL = 'https://studio-api.prod.suno.com';
 
+// i18n for main process
+const translations = {
+  en: {
+    open: 'Open',
+    playPause: 'Play/Pause',
+    exit: 'Exit',
+    previous: 'Previous',
+    pause: 'Pause',
+    play: 'Play',
+    next: 'Next',
+    authTitle: 'Authorization - paste JWT token',
+    authHeader: '🔐 Suno AI Authorization',
+    howToGetToken: 'How to get the token:',
+    method1: 'Method 1 (simple):',
+    method1Steps: ['Log in to suno.com in your browser', 'Press F12 → Console tab', 'Paste this code and press Enter:'],
+    method1Note: 'Token will be copied automatically!',
+    method2: 'Method 2 (via Network):',
+    method2Steps: ['F12 → Network → refresh the page', 'Find any request to studio-api', 'Copy authorization header (after "Bearer ")'],
+    placeholder: 'Paste JWT token here (starts with eyJ...)',
+    tokenNote: '⚠️ Token is valid for ~1 hour.',
+    cancel: 'Cancel',
+    authorize: 'Authorize',
+    error: 'Error: paste a valid JWT token'
+  },
+  uk: {
+    open: 'Відкрити',
+    playPause: 'Грати/Пауза',
+    exit: 'Вихід',
+    previous: 'Попередній',
+    pause: 'Пауза',
+    play: 'Грати',
+    next: 'Наступний',
+    authTitle: 'Авторизація - вставте JWT токен',
+    authHeader: '🔐 Авторизація Suno AI',
+    howToGetToken: 'Як отримати токен:',
+    method1: 'Спосіб 1 (простий):',
+    method1Steps: ['Увійдіть на suno.com у браузері', 'Натисніть F12 → вкладка Console', 'Вставте цей код і натисніть Enter:'],
+    method1Note: 'Токен скопіюється автоматично!',
+    method2: 'Спосіб 2 (через Network):',
+    method2Steps: ['F12 → Network → оновіть сторінку', 'Знайдіть будь-який запит до studio-api', 'Скопіюйте authorization header (після "Bearer ")'],
+    placeholder: 'Вставте JWT токен сюди (починається з eyJ...)',
+    tokenNote: '⚠️ Токен дійсний ~1 годину.',
+    cancel: 'Скасувати',
+    authorize: 'Авторизуватися',
+    error: 'Помилка: вставте правильний JWT токен'
+  },
+  ru: {
+    open: 'Открыть',
+    playPause: 'Играть/Пауза',
+    exit: 'Выход',
+    previous: 'Предыдущий',
+    pause: 'Пауза',
+    play: 'Играть',
+    next: 'Следующий',
+    authTitle: 'Авторизация - вставьте JWT токен',
+    authHeader: '🔐 Авторизация Suno AI',
+    howToGetToken: 'Как получить токен:',
+    method1: 'Способ 1 (простой):',
+    method1Steps: ['Войдите на suno.com в браузере', 'Нажмите F12 → вкладка Console', 'Вставьте этот код и нажмите Enter:'],
+    method1Note: 'Токен скопируется автоматически!',
+    method2: 'Способ 2 (через Network):',
+    method2Steps: ['F12 → Network → обновите страницу', 'Найдите любой запрос к studio-api', 'Скопируйте authorization header (после "Bearer ")'],
+    placeholder: 'Вставьте JWT токен сюда (начинается с eyJ...)',
+    tokenNote: '⚠️ Токен действителен ~1 час.',
+    cancel: 'Отмена',
+    authorize: 'Авторизоваться',
+    error: 'Ошибка: вставьте правильный JWT токен'
+  }
+};
+
+function getSystemLang() {
+  const locale = app.getLocale().split('-')[0];
+  if (locale === 'uk') return 'uk';
+  if (locale === 'ru') return 'ru';
+  return 'en';
+}
+
+function t(key) {
+  const lang = getSystemLang();
+  return translations[lang]?.[key] || translations.en[key] || key;
+}
+
 function createWindow() {
-  // Create app icon programmatically (32x32 for window, will be resized)
+  // Create app icon (32x32)
   const createAppIcon = () => {
     const size = 32;
     const pixels = Buffer.alloc(size * size * 4, 0);
@@ -36,50 +117,32 @@ function createWindow() {
       }
     };
     
-    // Draw circle background (purple gradient approximation)
+    // Circle background (purple gradient)
     const cx = 16, cy = 16, r = 14;
     for (let y = 0; y < size; y++) {
       for (let x = 0; x < size; x++) {
         const dx = x - cx, dy = y - cy;
-        const dist = Math.sqrt(dx * dx + dy * dy);
-        if (dist <= r) {
-          // Purple gradient: #7c3aed to #a855f7
+        if (Math.sqrt(dx * dx + dy * dy) <= r) {
           const t = (x + y) / (size * 2);
-          const rr = Math.floor(124 + t * (168 - 124));
-          const gg = Math.floor(58 + t * (85 - 58));
-          const bb = Math.floor(237 + t * (247 - 237));
-          setPixel(x, y, rr, gg, bb, 255);
+          setPixel(x, y, Math.floor(124 + t * 44), Math.floor(58 + t * 27), Math.floor(237 + t * 10), 255);
         }
       }
     }
     
-    // Draw sound wave bars (pink #ec4899)
-    const barColor = [236, 72, 153, 255];
-    const bars = [
-      { x: 8, y1: 11, y2: 21 },
-      { x: 12, y1: 9, y2: 23 },
-      { x: 16, y1: 7, y2: 25 },
-      { x: 20, y1: 9, y2: 23 },
-      { x: 24, y1: 11, y2: 21 }
-    ];
-    
-    bars.forEach(bar => {
-      for (let y = bar.y1; y <= bar.y2; y++) {
-        setPixel(bar.x, y, ...barColor);
-        setPixel(bar.x - 1, y, ...barColor);
+    // Sound wave bars (pink)
+    [[8, 11, 21], [12, 9, 23], [16, 7, 25], [20, 9, 23], [24, 11, 21]].forEach(([bx, y1, y2]) => {
+      for (let y = y1; y <= y2; y++) {
+        setPixel(bx, y, 236, 72, 153, 255);
+        setPixel(bx - 1, y, 236, 72, 153, 255);
       }
     });
     
     try {
       return nativeImage.createFromBuffer(pixels, { width: size, height: size });
     } catch (e) {
-      console.log('App icon creation error:', e.message);
       return nativeImage.createEmpty();
     }
   };
-  
-  const appIcon = createAppIcon();
-  console.log('App icon size:', appIcon.getSize());
   
   mainWindow = new BrowserWindow({
     width: 400,
@@ -95,16 +158,14 @@ function createWindow() {
       preload: path.join(__dirname, 'preload.js'),
       webSecurity: true,
       backgroundThrottling: true,
-      enableBlinkFeatures: '',
     },
-    icon: appIcon,
+    icon: createAppIcon(),
     backgroundColor: '#1a1a2e',
     show: false,
   });
 
   mainWindow.once('ready-to-show', () => {
     mainWindow.show();
-    // Initialize thumbar buttons after window is ready
     setTimeout(() => setupThumbarButtons(false), 500);
   });
 
@@ -122,7 +183,7 @@ function createWindow() {
 }
 
 function createTray() {
-  // Create tray icon programmatically (16x16)
+  // Create tray icon (16x16)
   const createTrayIcon = () => {
     const size = 16;
     const pixels = Buffer.alloc(size * size * 4, 0);
@@ -137,54 +198,39 @@ function createTray() {
       }
     };
     
-    // Draw circle background (purple)
+    // Circle background
     const cx = 8, cy = 8, r = 7;
     for (let y = 0; y < size; y++) {
       for (let x = 0; x < size; x++) {
-        const dx = x - cx, dy = y - cy;
-        if (Math.sqrt(dx * dx + dy * dy) <= r) {
-          setPixel(x, y, 124, 58, 237, 255); // #7c3aed
+        if (Math.sqrt((x - cx) ** 2 + (y - cy) ** 2) <= r) {
+          setPixel(x, y, 124, 58, 237, 255);
         }
       }
     }
     
-    // Draw sound wave bars (pink)
-    const barColor = [236, 72, 153, 255];
-    const bars = [
-      { x: 4, y1: 5, y2: 10 },
-      { x: 6, y1: 4, y2: 11 },
-      { x: 8, y1: 3, y2: 12 },
-      { x: 10, y1: 4, y2: 11 },
-      { x: 12, y1: 5, y2: 10 }
-    ];
-    
-    bars.forEach(bar => {
-      for (let y = bar.y1; y <= bar.y2; y++) {
-        setPixel(bar.x, y, ...barColor);
-      }
+    // Sound wave bars
+    [[4, 5, 10], [6, 4, 11], [8, 3, 12], [10, 4, 11], [12, 5, 10]].forEach(([bx, y1, y2]) => {
+      for (let y = y1; y <= y2; y++) setPixel(bx, y, 236, 72, 153, 255);
     });
     
     try {
       return nativeImage.createFromBuffer(pixels, { width: size, height: size });
     } catch (e) {
-      console.log('Tray icon creation error:', e.message);
       return nativeImage.createEmpty();
     }
   };
   
   try {
-    const icon = createTrayIcon();
-    tray = new Tray(icon);
+    tray = new Tray(createTrayIcon());
   } catch (e) {
-    console.log('Tray icon error:', e.message);
     tray = new Tray(nativeImage.createEmpty());
   }
 
   const contextMenu = Menu.buildFromTemplate([
-    { label: 'Відкрити', click: () => mainWindow.show() },
-    { label: 'Play/Pause', click: () => mainWindow.webContents.send('tray-toggle-play') },
+    { label: t('open'), click: () => mainWindow.show() },
+    { label: t('playPause'), click: () => mainWindow.webContents.send('tray-toggle-play') },
     { type: 'separator' },
-    { label: 'Вихід', click: () => { app.isQuitting = true; app.quit(); } }
+    { label: t('exit'), click: () => { app.isQuitting = true; app.quit(); } }
   ]);
 
   tray.setToolTip('Suno Desktop Player');
@@ -197,20 +243,17 @@ ipcMain.handle('minimize-window', () => mainWindow.minimize());
 ipcMain.handle('maximize-window', () => mainWindow.isMaximized() ? mainWindow.unmaximize() : mainWindow.maximize());
 ipcMain.handle('close-window', () => mainWindow.hide());
 
-// Update thumbnail toolbar when playback state changes
 ipcMain.on('playback-state-changed', (event, isPlaying) => {
   setupThumbarButtons(isPlaying);
 });
 
-// ============ WINDOWS TASKBAR THUMBNAIL TOOLBAR ============
+// Windows Taskbar Thumbnail Toolbar
 function setupThumbarButtons(isPlaying) {
   if (process.platform !== 'win32' || !mainWindow) return;
   
-  // Create icons using nativeImage.createFromBuffer with RGBA pixel data
-  // 16x16 icons with white shapes on transparent background
   const createPixelIcon = (type) => {
     const size = 16;
-    const pixels = Buffer.alloc(size * size * 4, 0); // RGBA
+    const pixels = Buffer.alloc(size * size * 4, 0);
     
     const setPixel = (x, y, r, g, b, a) => {
       if (x >= 0 && x < size && y >= 0 && y < size) {
@@ -231,95 +274,71 @@ function setupThumbarButtons(isPlaying) {
     };
     
     if (type === 'prev') {
-      // Left bar
       fillRect(3, 3, 5, 12);
-      // Triangle pointing left
       for (let i = 0; i < 6; i++) {
         fillRect(12 - i, 5 + i, 12, 5 + i);
         fillRect(12 - i, 10 - i, 12, 10 - i);
       }
     } else if (type === 'play') {
-      // Triangle pointing right
       for (let i = 0; i < 7; i++) {
         fillRect(4 + i, 3 + i, 4 + i, 12 - i);
       }
     } else if (type === 'pause') {
-      // Two vertical bars
       fillRect(4, 3, 6, 12);
       fillRect(9, 3, 11, 12);
     } else if (type === 'next') {
-      // Triangle pointing right
       for (let i = 0; i < 6; i++) {
         fillRect(3, 5 + i, 3 + i, 5 + i);
         fillRect(3, 10 - i, 3 + i, 10 - i);
       }
-      // Right bar
       fillRect(10, 3, 12, 12);
     }
     
     try {
       return nativeImage.createFromBuffer(pixels, { width: size, height: size });
     } catch (e) {
-      console.log('Pixel icon creation error:', e.message);
       return nativeImage.createEmpty();
     }
   };
   
-  const prevIcon = createPixelIcon('prev');
-  const playIcon = createPixelIcon('play');
-  const pauseIcon = createPixelIcon('pause');
-  const nextIcon = createPixelIcon('next');
-  
-  // Debug: check if icons are valid
-  console.log('Icon sizes - prev:', prevIcon.getSize(), 'play:', playIcon.getSize(), 'pause:', pauseIcon.getSize(), 'next:', nextIcon.getSize());
-  
   try {
-    const buttons = [
+    mainWindow.setThumbarButtons([
       {
-        tooltip: 'Попередній',
-        icon: prevIcon,
+        tooltip: t('previous'),
+        icon: createPixelIcon('prev'),
         click: () => mainWindow.webContents.send('thumbar-prev')
       },
       {
-        tooltip: isPlaying ? 'Пауза' : 'Грати',
-        icon: isPlaying ? pauseIcon : playIcon,
+        tooltip: isPlaying ? t('pause') : t('play'),
+        icon: createPixelIcon(isPlaying ? 'pause' : 'play'),
         click: () => mainWindow.webContents.send('thumbar-play-pause')
       },
       {
-        tooltip: 'Наступний',
-        icon: nextIcon,
+        tooltip: t('next'),
+        icon: createPixelIcon('next'),
         click: () => mainWindow.webContents.send('thumbar-next')
       }
-    ];
-    
-    const result = mainWindow.setThumbarButtons(buttons);
-    console.log('Thumbar buttons set result:', result, 'isPlaying:', isPlaying);
+    ]);
   } catch (e) {
     console.log('Error setting thumbar buttons:', e.message);
   }
 }
 
-// ============ АВТОРИЗАЦІЯ ЧЕРЕЗ СИСТЕМНИЙ БРАУЗЕР ============
-
+// Authorization via system browser
 ipcMain.handle('open-auth-window', async () => {
   return new Promise((resolve) => {
-    // Відкриваємо Suno у системному браузері
     console.log('Opening system browser for Suno login...');
     shell.openExternal(SUNO_URL);
-    
-    // Показуємо вікно для вставки cookies
     showCookieInputWindow(resolve);
   });
 });
 
 function showCookieInputWindow(resolve) {
-  // Закриваємо попереднє вікно якщо є
   if (authWindow && !authWindow.isDestroyed()) {
     authWindow.close();
     authWindow = null;
   }
   
-  // Видаляємо старі слухачі
   ipcMain.removeAllListeners('jwt-submitted');
   ipcMain.removeAllListeners('cookie-cancelled');
   
@@ -333,22 +352,22 @@ function showCookieInputWindow(resolve) {
       contextIsolation: false,
     },
     autoHideMenuBar: true,
-    title: 'Авторизація - вставте JWT токен',
+    title: t('authTitle'),
     resizable: false,
     show: false,
   });
   
-  authWindow.once('ready-to-show', () => {
-    authWindow.show();
-  });
+  authWindow.once('ready-to-show', () => authWindow.show());
   
-  // HTML сторінка для вводу cookie
+  const lang = getSystemLang();
+  const tr = translations[lang] || translations.en;
+  
   const html = `
     <!DOCTYPE html>
     <html>
     <head>
       <meta charset="UTF-8">
-      <title>Авторизація Suno</title>
+      <title>Suno Authorization</title>
       <style>
         * { box-sizing: border-box; margin: 0; padding: 0; }
         body { 
@@ -420,54 +439,52 @@ function showCookieInputWindow(resolve) {
       </style>
     </head>
     <body>
-      <h2>🔐 Авторизація Suno AI</h2>
+      <h2>${tr.authHeader}</h2>
       
       <div class="instructions">
-        <p><strong>Як отримати токен:</strong></p>
+        <p><strong>${tr.howToGetToken}</strong></p>
         
         <div class="method">
-          <div class="method-title">Спосіб 1 (простий):</div>
+          <div class="method-title">${tr.method1}</div>
           <ol>
-            <li>Увійдіть на suno.com у браузері</li>
-            <li>Натисніть <code>F12</code> → вкладка <code>Console</code></li>
-            <li>Вставте цей код і натисніть Enter:</li>
+            <li>${tr.method1Steps[0]}</li>
+            <li>${tr.method1Steps[1]}</li>
+            <li>${tr.method1Steps[2]}</li>
           </ol>
           <code style="display:block; margin-top:8px; font-size:10px; word-break:break-all;">
-            copy(JSON.parse(localStorage.getItem('clerk-db-jwt'))?.tokensByInstance?.ins_2OZ6yMDg8lqdJEih1rozf8Ozmdn?.jwt || 'Токен не знайдено')
+            copy(JSON.parse(localStorage.getItem('clerk-db-jwt'))?.tokensByInstance?.ins_2OZ6yMDg8lqdJEih1rozf8Ozmdn?.jwt || 'Token not found')
           </code>
-          <li style="list-style:none; margin-top:5px;">Токен скопіюється автоматично!</li>
+          <li style="list-style:none; margin-top:5px;">${tr.method1Note}</li>
         </div>
         
         <div class="method">
-          <div class="method-title">Спосіб 2 (через Network):</div>
+          <div class="method-title">${tr.method2}</div>
           <ol>
-            <li><code>F12</code> → <code>Network</code> → оновіть сторінку</li>
-            <li>Знайдіть будь-який запит до <code>studio-api</code></li>
-            <li>Скопіюйте <code>authorization</code> header (після "Bearer ")</li>
+            <li>${tr.method2Steps[0]}</li>
+            <li>${tr.method2Steps[1]}</li>
+            <li>${tr.method2Steps[2]}</li>
           </ol>
         </div>
       </div>
       
-      <textarea id="cookie-input" placeholder="Вставте JWT токен сюди (починається з eyJ...)"></textarea>
-      <p class="note">⚠️ Токен дійсний ~1 годину.</p>
+      <textarea id="cookie-input" placeholder="${tr.placeholder}"></textarea>
+      <p class="note">${tr.tokenNote}</p>
       
       <div class="buttons">
-        <button class="btn-secondary" onclick="cancel()">Скасувати</button>
-        <button class="btn-primary" onclick="submit()">Авторизуватися</button>
+        <button class="btn-secondary" onclick="cancel()">${tr.cancel}</button>
+        <button class="btn-primary" onclick="submit()">${tr.authorize}</button>
       </div>
       
-      <p class="error" id="error">Помилка: вставте правильний JWT токен</p>
+      <p class="error" id="error">${tr.error}</p>
       
       <script>
         const { ipcRenderer } = require('electron');
         
         function submit() {
           let value = document.getElementById('cookie-input').value.trim();
-          // Видаляємо "Bearer " якщо користувач скопіював з ним
           if (value.toLowerCase().startsWith('bearer ')) {
             value = value.substring(7);
           }
-          // Перевіряємо що це JWT токен (починається з eyJ)
           if (!value || !value.startsWith('eyJ') || value.length < 100) {
             document.getElementById('error').style.display = 'block';
             return;
@@ -489,24 +506,20 @@ function showCookieInputWindow(resolve) {
   
   authWindow.loadURL(`data:text/html;charset=utf-8,${encodeURIComponent(html)}`);
   
-  // Обробка відповіді - JWT токен напряму
   ipcMain.once('jwt-submitted', async (event, jwtToken) => {
     console.log('JWT submitted, length:', jwtToken.length);
     
     try {
-      // Зберігаємо JWT токен в кеш
       cachedJwtToken = jwtToken;
       
-      // Парсимо токен для отримання expiry
       try {
         const payload = JSON.parse(Buffer.from(jwtToken.split('.')[1], 'base64').toString());
-        jwtTokenExpiry = payload.exp * 1000; // конвертуємо в мілісекунди
+        jwtTokenExpiry = payload.exp * 1000;
         console.log('JWT token expires:', new Date(jwtTokenExpiry));
       } catch (e) {
-        jwtTokenExpiry = Date.now() + 3600000; // 1 година за замовчуванням
+        jwtTokenExpiry = Date.now() + 3600000;
       }
       
-      // Зберігаємо JWT в cookie для персистенції
       const sunoSession = session.fromPartition('persist:suno');
       await sunoSession.cookies.set({
         url: SUNO_URL,
@@ -540,55 +553,35 @@ function showCookieInputWindow(resolve) {
   
   authWindow.on('closed', () => {
     authWindow = null;
-    // Якщо вікно закрито без відповіді - resolve(false)
     ipcMain.removeAllListeners('jwt-submitted');
     ipcMain.removeAllListeners('cookie-cancelled');
   });
-  
-  // Якщо вікно закривається кнопкою X без submit/cancel
-  authWindow.on('close', () => {
-    // resolve вже може бути викликаний, тому перевіряємо
-    setTimeout(() => {
-      if (authWindow === null) return; // вже оброблено
-      resolve(false);
-    }, 100);
-  });
 }
 
-// Перевіряємо авторизацію - тепер перевіряємо JWT токен
+// Check authentication
 ipcMain.handle('check-auth', async () => {
   try {
-    // Спочатку перевіряємо кеш
     if (cachedJwtToken && Date.now() < jwtTokenExpiry - 60000) {
-      console.log('Check auth - cached JWT valid');
       return true;
     }
     
-    // Завантажуємо з cookies
     const sunoSession = session.fromPartition('persist:suno');
     const cookies = await sunoSession.cookies.get({ url: SUNO_URL });
-    
     const jwtCookie = cookies.find(c => c.name === '__jwt_token');
     
-    if (jwtCookie && jwtCookie.value) {
-      // Перевіряємо чи токен ще дійсний
+    if (jwtCookie?.value) {
       try {
         const payload = JSON.parse(Buffer.from(jwtCookie.value.split('.')[1], 'base64').toString());
         if (payload.exp * 1000 > Date.now()) {
           cachedJwtToken = jwtCookie.value;
           jwtTokenExpiry = payload.exp * 1000;
-          console.log('Check auth - JWT loaded from cookie, valid until:', new Date(jwtTokenExpiry));
           return true;
         }
-      } catch (e) {
-        console.log('JWT parse error:', e.message);
-      }
+      } catch (e) {}
     }
     
-    console.log('Check auth - no valid JWT found');
     return false;
   } catch (e) {
-    console.log('Check auth error:', e.message);
     return false;
   }
 });
@@ -599,31 +592,26 @@ ipcMain.handle('logout', async () => {
     await session.fromPartition('persist:suno').clearStorageData({
       storages: ['cookies', 'localstorage', 'sessionstorage']
     });
-    // Скидаємо кешований JWT токен
     cachedJwtToken = null;
     jwtTokenExpiry = 0;
-    console.log('Logout completed');
     return true;
   } catch (e) {
-    console.log('Logout error:', e.message);
     return false;
   }
 });
 
-// Функція отримання JWT токена з кешу або cookies
+// Get JWT token
 async function getJwtToken() {
-  // Перевіряємо чи токен ще дійсний (з запасом 60 сек)
   if (cachedJwtToken && Date.now() < jwtTokenExpiry - 60000) {
     return cachedJwtToken;
   }
   
-  // Завантажуємо з cookies
   try {
     const sunoSession = session.fromPartition('persist:suno');
     const cookies = await sunoSession.cookies.get({ url: SUNO_URL });
     const jwtCookie = cookies.find(c => c.name === '__jwt_token');
     
-    if (jwtCookie && jwtCookie.value) {
+    if (jwtCookie?.value) {
       const payload = JSON.parse(Buffer.from(jwtCookie.value.split('.')[1], 'base64').toString());
       if (payload.exp * 1000 > Date.now()) {
         cachedJwtToken = jwtCookie.value;
@@ -631,37 +619,23 @@ async function getJwtToken() {
         return cachedJwtToken;
       }
     }
-  } catch (e) {
-    console.log('Error loading JWT from cookies:', e.message);
-  }
+  } catch (e) {}
   
   return null;
 }
 
-// ============ API ЗАПИТИ ============
+// API Requests
 ipcMain.handle('api-request', async (event, { url, method = 'GET', body = null }) => {
   return new Promise(async (resolve) => {
     try {
-      // Отримуємо JWT токен
       const jwtToken = await getJwtToken();
       
       if (!jwtToken) {
-        console.log('No valid JWT token available');
         resolve({ ok: false, error: 'Not authenticated - please login again', status: 401 });
         return;
       }
       
-      // Генеруємо browser-token як в браузері: {"token":"BASE64_TIMESTAMP_JSON"}
-      const timestampJson = JSON.stringify({ timestamp: Date.now() });
-      const base64Token = Buffer.from(timestampJson).toString('base64');
-      const browserToken = JSON.stringify({ token: base64Token });
-      
-      // Постійний device-id
-      let deviceId = 'd6d9cb68-255f-4da8-a39d-76d36b1454af';
-      
-      console.log('API Request:', url);
-      console.log('JWT token length:', jwtToken.length);
-      
+      const browserToken = JSON.stringify({ token: Buffer.from(JSON.stringify({ timestamp: Date.now() })).toString('base64') });
       const urlObj = new URL(url);
       
       const options = {
@@ -672,16 +646,15 @@ ipcMain.handle('api-request', async (event, { url, method = 'GET', body = null }
         headers: {
           'Accept': '*/*',
           'Accept-Encoding': 'gzip, deflate, br',
-          'Accept-Language': 'uk,en-US;q=0.9,en;q=0.8',
+          'Accept-Language': 'en-US,en;q=0.9',
           'Authorization': `Bearer ${jwtToken}`,
           'Cache-Control': 'no-cache',
           'Origin': 'https://suno.com',
-          'Pragma': 'no-cache',
           'Referer': 'https://suno.com/',
           'browser-token': browserToken,
-          'device-id': deviceId,
+          'device-id': 'd6d9cb68-255f-4da8-a39d-76d36b1454af',
           'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36',
-          'sec-ch-ua': '"Google Chrome";v="131", "Chromium";v="131", "Not_A Brand";v="24"',
+          'sec-ch-ua': '"Google Chrome";v="131", "Chromium";v="131"',
           'sec-ch-ua-mobile': '?0',
           'sec-ch-ua-platform': '"Windows"',
           'sec-fetch-dest': 'empty',
@@ -698,16 +671,13 @@ ipcMain.handle('api-request', async (event, { url, method = 'GET', body = null }
       const req = https.request(options, (res) => {
         let chunks = [];
         
-        console.log('API Response status:', res.statusCode);
-        
         res.on('data', chunk => chunks.push(chunk));
         
         res.on('end', () => {
           let responseData = Buffer.concat(chunks);
           
-          // Декомпресія якщо gzip
           const encoding = res.headers['content-encoding'];
-          if (encoding === 'gzip' || encoding === 'br' || encoding === 'deflate') {
+          if (encoding) {
             try {
               const zlib = require('zlib');
               if (encoding === 'gzip') {
@@ -717,25 +687,19 @@ ipcMain.handle('api-request', async (event, { url, method = 'GET', body = null }
               } else if (encoding === 'deflate') {
                 responseData = zlib.inflateSync(responseData);
               }
-            } catch (e) {
-              console.log('Decompression error:', e.message);
-            }
+            } catch (e) {}
           }
           
-          const responseText = responseData.toString('utf8');
-          
           try {
-            const json = JSON.parse(responseText);
+            const json = JSON.parse(responseData.toString('utf8'));
             resolve({ ok: res.statusCode >= 200 && res.statusCode < 300, data: json, status: res.statusCode });
           } catch (e) {
-            console.log('Response parse error:', responseText.substring(0, 300));
-            resolve({ ok: false, error: 'Invalid JSON', raw: responseText.substring(0, 500), status: res.statusCode });
+            resolve({ ok: false, error: 'Invalid JSON', status: res.statusCode });
           }
         });
       });
       
       req.on('error', error => {
-        console.log('API error:', error.message);
         resolve({ ok: false, error: error.message });
       });
       
@@ -743,13 +707,12 @@ ipcMain.handle('api-request', async (event, { url, method = 'GET', body = null }
       req.end();
       
     } catch (error) {
-      console.log('API handler error:', error.message);
       resolve({ ok: false, error: error.message });
     }
   });
 });
 
-// ============ ЗАПУСК ============
+// App lifecycle
 app.whenReady().then(createWindow);
 
 app.on('window-all-closed', () => {

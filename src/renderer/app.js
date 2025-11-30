@@ -5,7 +5,7 @@ class SunoPlayer {
     this.tracks = [];
     this.likedTracks = [];
     this.currentTrackIndex = -1;
-    this.currentTrackId = null; // Track by ID instead of index
+    this.currentTrackId = null;
     this.isPlaying = false;
     this.isRepeat = false;
     this.currentTab = 'all';
@@ -13,23 +13,35 @@ class SunoPlayer {
     this.hasMoreTracks = true;
     this.isAuthenticated = false;
     
-    // API URLs - оновлені на основі HAR файлу
+    // API URLs
     this.API_BASE = 'https://studio-api.prod.suno.com';
     this.SUNO_BASE = 'https://suno.com';
-    this.CLERK_BASE = 'https://clerk.suno.com';
     
     this.init();
   }
 
   init() {
+    this.applyTranslations();
     this.bindEvents();
     this.checkAuth();
     this.setupAudioEvents();
     
-    // Слухаємо команди з трея
+    // Listen for tray commands
     if (window.electronAPI) {
       window.electronAPI.onTrayTogglePlay(() => this.togglePlay());
     }
+  }
+  
+  // Apply translations to all elements with data-i18n attribute
+  applyTranslations() {
+    document.querySelectorAll('[data-i18n]').forEach(el => {
+      const key = el.getAttribute('data-i18n');
+      el.textContent = t(key);
+    });
+    document.querySelectorAll('[data-i18n-title]').forEach(el => {
+      const key = el.getAttribute('data-i18n-title');
+      el.title = t(key);
+    });
   }
 
   bindEvents() {
@@ -66,7 +78,7 @@ class SunoPlayer {
       this.audio.volume = e.target.value / 100;
     });
 
-    // Progress bar - use mousedown for immediate response
+    // Progress bar
     const progressBar = document.getElementById('progress-bar');
     if (progressBar) {
       const seekToPosition = (e) => {
@@ -79,7 +91,6 @@ class SunoPlayer {
       
       progressBar.addEventListener('click', seekToPosition);
       
-      // Drag support for smooth seeking
       let isDragging = false;
       progressBar.addEventListener('mousedown', (e) => {
         isDragging = true;
@@ -110,8 +121,7 @@ class SunoPlayer {
     this.audio.addEventListener('play', () => {
       this.updatePlayButton(true);
       this.isPlaying = true;
-      this.renderTracks(); // Update play/pause icons on tracks
-      // Notify main process about playback state
+      this.renderTracks();
       if (window.electronAPI?.notifyPlaybackState) {
         window.electronAPI.notifyPlaybackState(true);
       }
@@ -119,15 +129,14 @@ class SunoPlayer {
     this.audio.addEventListener('pause', () => {
       this.updatePlayButton(false);
       this.isPlaying = false;
-      this.renderTracks(); // Update play/pause icons on tracks
-      // Notify main process about playback state
+      this.renderTracks();
       if (window.electronAPI?.notifyPlaybackState) {
         window.electronAPI.notifyPlaybackState(false);
       }
     });
     this.audio.addEventListener('loadedmetadata', () => this.updateDuration());
     
-    // Listen for Windows taskbar thumbnail toolbar commands
+    // Windows taskbar thumbnail toolbar commands
     if (window.electronAPI) {
       window.electronAPI.onThumbarPrev?.(() => this.prevTrack());
       window.electronAPI.onThumbarPlayPause?.(() => this.togglePlay());
@@ -137,7 +146,6 @@ class SunoPlayer {
 
   // ============ Authentication ============
   async checkAuth() {
-    // Використовуємо Electron API для перевірки сесії
     if (window.electronAPI) {
       const isAuth = await window.electronAPI.checkAuth();
       if (isAuth) {
@@ -147,13 +155,10 @@ class SunoPlayer {
         return;
       }
     }
-    
-    // Якщо не авторизовані - показуємо екран логіну
     this.showAuthScreen();
   }
 
   async showAuthModal() {
-    // Використовуємо Electron вікно для авторизації
     if (window.electronAPI) {
       const success = await window.electronAPI.openAuthWindow();
       if (success) {
@@ -162,10 +167,6 @@ class SunoPlayer {
         this.loadTracks();
       }
     }
-  }
-
-  hideAuthModal() {
-    // Вже не потрібно - авторизація в окремому вікні
   }
 
   async logout() {
@@ -193,13 +194,11 @@ class SunoPlayer {
     this.showLoading(true);
     
     try {
-      // Завантажуємо всі треки
       console.log('Loading all tracks...');
       const allTracks = await this.fetchUserTracks(false);
       this.tracks = allTracks;
       console.log('Loaded all tracks:', allTracks.length);
       
-      // Завантажуємо лайкнуті треки
       console.log('Loading liked tracks...');
       const likedTracks = await this.fetchUserTracks(true);
       this.likedTracks = likedTracks;
@@ -208,12 +207,11 @@ class SunoPlayer {
       this.renderTracks();
       
       if (allTracks.length === 0) {
-        this.showNotification('Треків не знайдено. Спочатку створіть музику на suno.com');
+        this.showNotification(t('noTracksFound'));
       }
     } catch (error) {
       console.error('Failed to load tracks:', error);
-      this.showNotification('Помилка завантаження: ' + error.message);
-      // Показуємо демо дані для тестування інтерфейсу
+      this.showNotification(t('loadError') + error.message);
       this.loadDemoTracks();
     }
     
@@ -221,7 +219,6 @@ class SunoPlayer {
   }
 
   async fetchUserTracks(likedOnly = false, page = 0) {
-    // Suno AI API endpoint - на основі HAR файлу
     let url = `${this.API_BASE}/api/feed/v2?hide_disliked=true&hide_gen_stems=true&hide_studio_clips=true&page=${page}`;
     
     if (likedOnly) {
@@ -230,7 +227,6 @@ class SunoPlayer {
     
     console.log('Fetching tracks from:', url);
     
-    // Використовуємо Electron API для запиту (уникаємо CORS)
     if (window.electronAPI?.apiRequest) {
       const result = await window.electronAPI.apiRequest({ url, method: 'GET' });
       
@@ -242,9 +238,8 @@ class SunoPlayer {
         return this.formatTracks(clips);
       } else {
         console.error('API error:', result.error || result.status);
-        // Якщо 401/403 - можливо потрібна повторна авторизація
         if (result.status === 401 || result.status === 403) {
-          this.showNotification('Сесія закінчилась. Увійдіть знову.');
+          this.showNotification(t('sessionExpired'));
           this.logout();
         }
         throw new Error(result.error || 'API request failed');
@@ -255,20 +250,14 @@ class SunoPlayer {
   }
 
   formatTracks(rawTracks) {
-    // Формат даних на основі HAR файлу
     return rawTracks.map(track => {
-      // Визначаємо правильний URL для картинки
       let coverUrl = track.image_url || track.image_large_url || '';
-      
-      // Якщо є coverUrl і він валідний
       if (coverUrl && !coverUrl.startsWith('data:')) {
-        // Використовуємо HTTPS
         if (coverUrl.startsWith('http:')) {
           coverUrl = coverUrl.replace('http:', 'https:');
         }
       }
       
-      // Визначаємо URL для аудіо
       let audioUrl = track.audio_url || '';
       if (audioUrl && audioUrl.startsWith('http:')) {
         audioUrl = audioUrl.replace('http:', 'https:');
@@ -293,7 +282,6 @@ class SunoPlayer {
   }
 
   loadDemoTracks() {
-    // Демо треки для тестування UI
     this.tracks = [
       {
         id: 'demo1',
@@ -331,11 +319,9 @@ class SunoPlayer {
     const container = document.getElementById('tracks-list');
     const emptyState = document.getElementById('empty-state');
     
-    // Вибираємо треки залежно від вкладки
     let filteredTracks = this.tracks;
     
     if (this.currentTab === 'liked') {
-      // Використовуємо окремо завантажені лайкнуті треки АБО фільтруємо з усіх
       filteredTracks = this.likedTracks.length > 0 ? this.likedTracks : this.tracks.filter(t => t.liked);
     }
     
@@ -346,20 +332,15 @@ class SunoPlayer {
     }
     
     emptyState?.classList.add('hidden');
-    
-    // Зберігаємо поточний список для навігації
     this.currentTrackList = filteredTracks;
     
-    // Placeholder для картинок
     const defaultCover = 'data:image/svg+xml,' + encodeURIComponent('<svg xmlns="http://www.w3.org/2000/svg" width="100" height="100"><rect fill="#252542" width="100" height="100"/><text x="50" y="55" text-anchor="middle" fill="#6b6b7b" font-size="40">🎵</text></svg>');
     
     container.innerHTML = filteredTracks.map((track, index) => {
       const coverSrc = track.cover || defaultCover;
-      // Use track ID instead of index to determine if this track is playing
       const isCurrentTrack = this.currentTrackId === track.id;
       const isPlayingThisTrack = isCurrentTrack && this.isPlaying;
       
-      // SVG icons for play and pause
       const playIcon = `<svg width="24" height="24" viewBox="0 0 24 24" fill="currentColor"><path d="M8 5v14l11-7z"/></svg>`;
       const pauseIcon = `<svg width="24" height="24" viewBox="0 0 24 24" fill="currentColor"><path d="M6 19h4V5H6v14zm8-14v14h4V5h-4z"/></svg>`;
       
@@ -385,20 +366,20 @@ class SunoPlayer {
       `;
     }).join('');
     
-    // Add pagination controls
+    // Pagination
     container.innerHTML += `
       <div class="pagination">
         <button class="pagination-btn" id="btn-prev-page" ${this.currentPage === 0 ? 'disabled' : ''}>
-          ← Попередня
+          ${t('prevPage')}
         </button>
-        <span class="pagination-info">Сторінка ${this.currentPage + 1}</span>
+        <span class="pagination-info">${t('page')} ${this.currentPage + 1}</span>
         <button class="pagination-btn" id="btn-next-page" ${!this.hasMoreTracks ? 'disabled' : ''}>
-          Наступна →
+          ${t('nextPage')}
         </button>
       </div>
     `;
 
-    // Bind click events
+    // Bind events
     container.querySelectorAll('.track-item').forEach(item => {
       item.addEventListener('click', (e) => {
         if (!e.target.classList.contains('like-btn')) {
@@ -415,7 +396,6 @@ class SunoPlayer {
       });
     });
     
-    // Pagination events
     document.getElementById('btn-prev-page')?.addEventListener('click', () => this.loadPage(this.currentPage - 1));
     document.getElementById('btn-next-page')?.addEventListener('click', () => this.loadPage(this.currentPage + 1));
   }
@@ -436,14 +416,12 @@ class SunoPlayer {
         this.tracks = newTracks;
       }
       
-      this.hasMoreTracks = newTracks.length >= 20; // Assume 20 per page
+      this.hasMoreTracks = newTracks.length >= 20;
       this.renderTracks();
-      
-      // Scroll to top
       document.getElementById('tracks-container')?.scrollTo(0, 0);
     } catch (error) {
       console.error('Failed to load page:', error);
-      this.showNotification('Помилка завантаження сторінки');
+      this.showNotification(t('pageLoadError'));
     }
     
     this.showLoading(false);
@@ -464,18 +442,15 @@ class SunoPlayer {
 
   // ============ Playback ============
   playTrack(index) {
-    // Використовуємо поточний відфільтрований список
     const trackList = this.currentTrackList || this.tracks;
     if (index < 0 || index >= trackList.length) return;
     
     const track = trackList[index];
     this.currentTrackIndex = index;
-    this.currentTrackId = track.id; // Store track ID for cross-tab tracking
+    this.currentTrackId = track.id;
     
-    // Placeholder для картинки
     const defaultCover = 'data:image/svg+xml,' + encodeURIComponent('<svg xmlns="http://www.w3.org/2000/svg" width="100" height="100"><rect fill="#252542" width="100" height="100"/><text x="50" y="55" text-anchor="middle" fill="#6b6b7b" font-size="40">🎵</text></svg>');
     
-    // Оновлюємо UI
     const coverEl = document.getElementById('current-cover');
     if (coverEl) {
       coverEl.src = track.cover || defaultCover;
@@ -484,20 +459,17 @@ class SunoPlayer {
     document.getElementById('current-title').textContent = track.title;
     document.getElementById('current-artist').textContent = track.artist;
     
-    // Оновлюємо виділення в списку за ID треку
     document.querySelectorAll('.track-item').forEach((item) => {
       item.classList.toggle('playing', item.dataset.id === track.id);
     });
     
-    // Відтворюємо аудіо
     if (track.audio) {
       this.audio.src = track.audio;
       this.audio.play().catch(e => console.error('Playback failed:', e));
       this.isPlaying = true;
     } else {
-      // Якщо немає аудіо URL - показуємо повідомлення
       console.log('No audio URL for this track');
-      this.showNotification('Аудіо недоступне для цього треку');
+      this.showNotification(t('noAudio'));
     }
     
     this.updatePlayButton(this.isPlaying);
@@ -532,7 +504,6 @@ class SunoPlayer {
     const trackList = this.currentTrackList || this.tracks;
     if (trackList.length === 0) return;
     
-    // Якщо пройшло більше 3 секунд - перезапускаємо поточний трек
     if (this.audio.currentTime > 3) {
       this.audio.currentTime = 0;
       return;
@@ -583,16 +554,15 @@ class SunoPlayer {
     }
   }
 
-  // ============ Tabs & Likes ============
+  // ============ Tabs & Settings ============
   switchTab(tab) {
-    // Якщо натискаємо на налаштування - показуємо модалку
     if (tab === 'settings') {
       this.showSettingsModal();
       return;
     }
     
     this.currentTab = tab;
-    this.currentPage = 0; // Reset page when switching tabs
+    this.currentPage = 0;
     this.hasMoreTracks = true;
     
     document.querySelectorAll('.nav-tab').forEach(t => {
@@ -603,29 +573,39 @@ class SunoPlayer {
   }
   
   showSettingsModal() {
-    // Показуємо модальне вікно налаштувань замість виходу
     let modal = document.getElementById('settings-modal');
     if (!modal) {
       modal = document.createElement('div');
       modal.id = 'settings-modal';
+      
+      const languages = window.i18n.getAvailableLanguages();
+      const currentLang = window.i18n.getLanguage();
+      const langOptions = languages.map(l => 
+        `<option value="${l.code}" ${l.code === currentLang ? 'selected' : ''}>${l.name}</option>`
+      ).join('');
+      
       modal.innerHTML = `
         <div class="modal-overlay" onclick="window.sunoPlayer.hideSettingsModal()">
           <div class="modal-content" onclick="event.stopPropagation()">
-            <h3>⚙️ Налаштування</h3>
+            <h3>${t('settingsTitle')}</h3>
             <div class="settings-list">
               <div class="setting-item">
-                <span>🔊 Гучність</span>
+                <span>${t('volume')}</span>
                 <input type="range" id="settings-volume" min="0" max="100" value="${Math.round(this.audio.volume * 100)}">
               </div>
               <div class="setting-item">
-                <span>🔁 Повтор</span>
+                <span>${t('repeatToggle')}</span>
                 <label class="switch">
                   <input type="checkbox" id="settings-repeat" ${this.isRepeat ? 'checked' : ''}>
                   <span class="slider"></span>
                 </label>
               </div>
+              <div class="setting-item">
+                <span>${t('language')}</span>
+                <select id="settings-language">${langOptions}</select>
+              </div>
               <hr>
-              <button class="btn-logout-settings" onclick="window.sunoPlayer.logout(); window.sunoPlayer.hideSettingsModal();">🚪 Вийти з акаунту</button>
+              <button class="btn-logout-settings" onclick="window.sunoPlayer.logout(); window.sunoPlayer.hideSettingsModal();">${t('logout')}</button>
             </div>
             <button class="btn-close-modal" onclick="window.sunoPlayer.hideSettingsModal()">✕</button>
           </div>
@@ -641,7 +621,6 @@ class SunoPlayer {
       `;
       document.body.appendChild(modal);
       
-      // Стилі для модалки
       const style = document.createElement('style');
       style.textContent = `
         .modal-overlay {
@@ -677,6 +656,14 @@ class SunoPlayer {
         }
         .setting-item input[type="range"] {
           width: 120px;
+        }
+        .setting-item select {
+          background: #2a2a4a;
+          color: white;
+          border: 1px solid #7c3aed;
+          border-radius: 6px;
+          padding: 6px 10px;
+          cursor: pointer;
         }
         .btn-logout-settings {
           background: rgba(239, 68, 68, 0.2);
@@ -755,6 +742,14 @@ class SunoPlayer {
         this.audio.loop = this.isRepeat;
         document.getElementById('btn-repeat')?.classList.toggle('active', this.isRepeat);
       });
+      document.getElementById('settings-language').addEventListener('change', (e) => {
+        window.i18n.setLanguage(e.target.value);
+        this.hideSettingsModal();
+        this.applyTranslations();
+        this.renderTracks();
+        // Recreate modal with new language
+        document.getElementById('settings-modal')?.remove();
+      });
     } else {
       modal.style.display = 'block';
     }
@@ -772,9 +767,6 @@ class SunoPlayer {
     if (track) {
       track.liked = !track.liked;
       this.renderTracks();
-      
-      // TODO: Синхронізація з API
-      // this.syncLikeToServer(trackId, track.liked);
     }
   }
 
@@ -793,10 +785,8 @@ class SunoPlayer {
   }
 
   showNotification(message) {
-    // Показуємо нотифікацію користувачу
     console.log('Notification:', message);
     
-    // Створюємо елемент нотифікації якщо немає
     let notification = document.getElementById('notification');
     if (!notification) {
       notification = document.createElement('div');
@@ -823,23 +813,13 @@ class SunoPlayer {
     notification.textContent = message;
     notification.style.opacity = '1';
     
-    // Автоматично ховаємо через 4 секунди
     setTimeout(() => {
       notification.style.opacity = '0';
     }, 4000);
   }
-
-  // ============ Logout ============
-  logout() {
-    localStorage.removeItem('suno_auth');
-    this.isAuthenticated = false;
-    this.authToken = null;
-    this.tracks = [];
-    this.showAuthScreen();
-  }
 }
 
-// Ініціалізація
+// Initialize
 document.addEventListener('DOMContentLoaded', () => {
   window.sunoPlayer = new SunoPlayer();
 });
