@@ -338,8 +338,8 @@ ipcMain.handle('api-request', async (event, { url, method = 'GET', body = null }
       }
       
       // Генеруємо headers як в браузері
-      const browserToken = JSON.stringify({ timestamp: Date.now() });
-      const encodedToken = Buffer.from(browserToken).toString('base64');
+      const browserToken = Buffer.from(JSON.stringify({ timestamp: Date.now() })).toString('base64');
+      const browserTokenHeader = JSON.stringify({ token: browserToken });
       const deviceId = require('crypto').randomUUID();
       
       console.log('API Request:', url);
@@ -357,7 +357,7 @@ ipcMain.handle('api-request', async (event, { url, method = 'GET', body = null }
           'Content-Type': 'application/json',
           'Origin': SUNO_URL,
           'Referer': `${SUNO_URL}/`,
-          'browser-token': `{"token":"${encodedToken}"}`,
+          'browser-token': browserTokenHeader,
           'device-id': deviceId,
           'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
           'Cookie': `__session=${sessionCookie.value}`,
