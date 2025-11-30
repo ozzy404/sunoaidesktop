@@ -21,6 +21,33 @@ const SUNO_URL = 'https://suno.com';
 const SUNO_API_URL = 'https://studio-api.prod.suno.com';
 
 function createWindow() {
+  // Create app icon from embedded data for cross-platform support
+  const appIconSvg = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 256 256">
+    <defs>
+      <linearGradient id="bg" x1="0%" y1="0%" x2="100%" y2="100%">
+        <stop offset="0%" style="stop-color:#7c3aed"/>
+        <stop offset="100%" style="stop-color:#a855f7"/>
+      </linearGradient>
+    </defs>
+    <circle cx="128" cy="128" r="120" fill="url(#bg)"/>
+    <g fill="none" stroke="#ec4899" stroke-width="12" stroke-linecap="round">
+      <line x1="75" y1="90" x2="75" y2="166"/>
+      <line x1="103" y1="70" x2="103" y2="186"/>
+      <line x1="131" y1="50" x2="131" y2="206"/>
+      <line x1="159" y1="70" x2="159" y2="186"/>
+      <line x1="187" y1="90" x2="187" y2="166"/>
+    </g>
+  </svg>`;
+  
+  let appIcon;
+  try {
+    const iconDataUrl = `data:image/svg+xml;base64,${Buffer.from(appIconSvg).toString('base64')}`;
+    appIcon = nativeImage.createFromDataURL(iconDataUrl);
+  } catch (e) {
+    console.log('Failed to create app icon:', e.message);
+    appIcon = nativeImage.createEmpty();
+  }
+  
   mainWindow = new BrowserWindow({
     width: 400,
     height: 700,
@@ -37,7 +64,7 @@ function createWindow() {
       backgroundThrottling: true,
       enableBlinkFeatures: '',
     },
-    icon: path.join(__dirname, '../assets/icon.svg'),
+    icon: appIcon,
     backgroundColor: '#1a1a2e',
     show: false,
   });
@@ -62,18 +89,25 @@ function createWindow() {
 }
 
 function createTray() {
-  const iconSvgPath = path.join(__dirname, '../assets/icon.svg');
+  // Simple tray icon SVG
+  const trayIconSvg = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 16 16">
+    <circle cx="8" cy="8" r="7" fill="#7c3aed"/>
+    <g fill="none" stroke="#ec4899" stroke-width="1.5" stroke-linecap="round">
+      <line x1="4" y1="5" x2="4" y2="11"/>
+      <line x1="6" y1="4" x2="6" y2="12"/>
+      <line x1="8" y1="3" x2="8" y2="13"/>
+      <line x1="10" y1="4" x2="10" y2="12"/>
+      <line x1="12" y1="5" x2="12" y2="11"/>
+    </g>
+  </svg>`;
   
   try {
-    const fs = require('fs');
-    const svgData = fs.readFileSync(iconSvgPath, 'utf8');
-    const svgDataUrl = `data:image/svg+xml;base64,${Buffer.from(svgData).toString('base64')}`;
-    const icon = nativeImage.createFromDataURL(svgDataUrl);
+    const iconDataUrl = `data:image/svg+xml;base64,${Buffer.from(trayIconSvg).toString('base64')}`;
+    const icon = nativeImage.createFromDataURL(iconDataUrl);
     tray = new Tray(icon.resize({ width: 16, height: 16 }));
   } catch (e) {
     console.log('Tray icon error:', e.message);
-    const icon = nativeImage.createEmpty();
-    tray = new Tray(icon);
+    tray = new Tray(nativeImage.createEmpty());
   }
 
   const contextMenu = Menu.buildFromTemplate([
@@ -102,24 +136,22 @@ ipcMain.on('playback-state-changed', (event, isPlaying) => {
 function setupThumbarButtons(isPlaying) {
   if (process.platform !== 'win32' || !mainWindow) return;
   
-  // Create simple icons programmatically (16x16 PNG format required for Windows)
+  // Pre-encoded 16x16 PNG icons as base64 (white icons on transparent background)
+  // These are actual PNG files encoded, not SVG
+  const icons = {
+    prev: 'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAABAAAAAQCAYAAAAf8/9hAAAASklEQVQ4T2NkoBAwUqifYdQAhtEwIBgGf/78+Q+yC+Q2BgYGBqK9ADKAkZHx/+/fv/8T7YL///8zgFwAcwHRXiDogtGESDQMAADLzhIRVjlyLQAAAABJRU5ErkJggg==',
+    play: 'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAABAAAAAQCAYAAAAf8/9hAAAAPklEQVQ4T2NkoBAwUqifYRgY8OfPn/8gNxDrBZCBjIyM/3///k2cF/7//8/w+/dvBlJdQHR4DAsDWPxUdQEAhx0SEW4gD/EAAAAASUVORK5CYII=',
+    pause: 'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAABAAAAAQCAYAAAAf8/9hAAAALklEQVQ4T2NkoBAwUqifYdQAhtEwGHhhQEoYgOIepAZSXTBqADZfkRqZpLoAAKhyChFWJjr3AAAAAElFTkSuQmCC',
+    next: 'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAABAAAAAQCAYAAAAf8/9hAAAATElEQVQ4T2NkoBAwUqifgWgD/vz58x/kNgYGBoZRLyAPA0bG/////v37N/FeALuAmDD4/5+B4fdvBqJdQHQYkBIGsPipuhcAAHMuEhFCPNs1AAAAAElFTkSuQmCC'
+  };
+  
   const createIcon = (type) => {
-    // Create a 16x16 icon with simple shapes
-    const size = 16;
-    const canvas = `
-      <svg xmlns="http://www.w3.org/2000/svg" width="${size}" height="${size}" viewBox="0 0 ${size} ${size}">
-        <rect width="${size}" height="${size}" fill="transparent"/>
-        ${type === 'prev' ? '<path d="M4 3h2v10H4zm2 5l6 5V3z" fill="white"/>' : ''}
-        ${type === 'play' ? '<path d="M5 3v10l8-5z" fill="white"/>' : ''}
-        ${type === 'pause' ? '<path d="M4 3h3v10H4zm5 0h3v10H9z" fill="white"/>' : ''}
-        ${type === 'next' ? '<path d="M4 3v10l6-5zm6 0h2v10h-2z" fill="white"/>' : ''}
-      </svg>
-    `;
-    const dataUrl = `data:image/svg+xml;base64,${Buffer.from(canvas).toString('base64')}`;
     try {
-      return nativeImage.createFromDataURL(dataUrl).resize({ width: 16, height: 16 });
+      const img = nativeImage.createFromDataURL(icons[type]);
+      // Ensure proper size for Windows taskbar
+      return img.resize({ width: 16, height: 16 });
     } catch (e) {
-      console.log('Icon creation error:', e.message);
+      console.log('Icon creation error for', type, ':', e.message);
       return nativeImage.createEmpty();
     }
   };
@@ -130,7 +162,7 @@ function setupThumbarButtons(isPlaying) {
   const nextIcon = createIcon('next');
   
   try {
-    mainWindow.setThumbarButtons([
+    const buttons = [
       {
         tooltip: 'Попередній',
         icon: prevIcon,
@@ -146,7 +178,9 @@ function setupThumbarButtons(isPlaying) {
         icon: nextIcon,
         click: () => mainWindow.webContents.send('thumbar-next')
       }
-    ]);
+    ];
+    
+    mainWindow.setThumbarButtons(buttons);
     console.log('Thumbar buttons set successfully, isPlaying:', isPlaying);
   } catch (e) {
     console.log('Error setting thumbar buttons:', e.message);
