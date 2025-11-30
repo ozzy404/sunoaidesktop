@@ -5,6 +5,7 @@ class SunoPlayer {
     this.tracks = [];
     this.likedTracks = [];
     this.currentTrackIndex = -1;
+    this.currentTrackId = null; // Track by ID instead of index
     this.isPlaying = false;
     this.isRepeat = false;
     this.currentTab = 'all';
@@ -332,7 +333,8 @@ class SunoPlayer {
     
     container.innerHTML = filteredTracks.map((track, index) => {
       const coverSrc = track.cover || defaultCover;
-      const isCurrentTrack = this.currentTrackIndex === index;
+      // Use track ID instead of index to determine if this track is playing
+      const isCurrentTrack = this.currentTrackId === track.id;
       const isPlayingThisTrack = isCurrentTrack && this.isPlaying;
       
       // SVG icons for play and pause
@@ -400,6 +402,7 @@ class SunoPlayer {
     
     const track = trackList[index];
     this.currentTrackIndex = index;
+    this.currentTrackId = track.id; // Store track ID for cross-tab tracking
     
     // Placeholder для картинки
     const defaultCover = 'data:image/svg+xml,' + encodeURIComponent('<svg xmlns="http://www.w3.org/2000/svg" width="100" height="100"><rect fill="#252542" width="100" height="100"/><text x="50" y="55" text-anchor="middle" fill="#6b6b7b" font-size="40">🎵</text></svg>');
@@ -413,9 +416,9 @@ class SunoPlayer {
     document.getElementById('current-title').textContent = track.title;
     document.getElementById('current-artist').textContent = track.artist;
     
-    // Оновлюємо виділення в списку
-    document.querySelectorAll('.track-item').forEach((item, i) => {
-      item.classList.toggle('playing', i === index);
+    // Оновлюємо виділення в списку за ID треку
+    document.querySelectorAll('.track-item').forEach((item) => {
+      item.classList.toggle('playing', item.dataset.id === track.id);
     });
     
     // Відтворюємо аудіо

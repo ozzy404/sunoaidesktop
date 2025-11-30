@@ -160,6 +160,8 @@ body {
   display: flex;
   flex-direction: column;
   background: var(--bg-primary);
+  overflow: hidden; /* Important for child scrolling */
+  min-height: 0; /* Allow flex item to shrink */
 }
 
 /* Navigation Tabs */
@@ -208,10 +210,12 @@ body {
 /* Tracks Container */
 .tracks-container {
   flex: 1;
-  overflow-y: auto;
+  overflow-y: auto !important;
   overflow-x: hidden;
   padding: 12px;
   padding-bottom: 140px; /* Space for fixed player bar */
+  min-height: 0; /* Critical for flex scrolling */
+  -webkit-overflow-scrolling: touch;
 }
 
 .tracks-container::-webkit-scrollbar {

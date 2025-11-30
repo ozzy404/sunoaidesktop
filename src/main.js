@@ -101,24 +101,32 @@ ipcMain.on('playback-state-changed', (event, isPlaying) => {
 function setupThumbarButtons(isPlaying) {
   if (process.platform !== 'win32' || !mainWindow) return;
   
-  const fs = require('fs');
-  
-  // Create icons from SVG for Windows thumbnail toolbar
-  const createIconFromSvg = (svgPath) => {
+  // Create simple icons programmatically (16x16 PNG format required for Windows)
+  const createIcon = (type) => {
+    // Create a 16x16 icon with simple shapes
+    const size = 16;
+    const canvas = `
+      <svg xmlns="http://www.w3.org/2000/svg" width="${size}" height="${size}" viewBox="0 0 ${size} ${size}">
+        <rect width="${size}" height="${size}" fill="transparent"/>
+        ${type === 'prev' ? '<path d="M4 3h2v10H4zm2 5l6 5V3z" fill="white"/>' : ''}
+        ${type === 'play' ? '<path d="M5 3v10l8-5z" fill="white"/>' : ''}
+        ${type === 'pause' ? '<path d="M4 3h3v10H4zm5 0h3v10H9z" fill="white"/>' : ''}
+        ${type === 'next' ? '<path d="M4 3v10l6-5zm6 0h2v10h-2z" fill="white"/>' : ''}
+      </svg>
+    `;
+    const dataUrl = `data:image/svg+xml;base64,${Buffer.from(canvas).toString('base64')}`;
     try {
-      const svgContent = fs.readFileSync(svgPath, 'utf8');
-      const dataUrl = `data:image/svg+xml;base64,${Buffer.from(svgContent).toString('base64')}`;
       return nativeImage.createFromDataURL(dataUrl).resize({ width: 16, height: 16 });
     } catch (e) {
-      console.log('Error loading icon:', e.message);
+      console.log('Icon creation error:', e.message);
       return nativeImage.createEmpty();
     }
   };
   
-  const prevIcon = createIconFromSvg(path.join(__dirname, '../assets/prev.svg'));
-  const playIcon = createIconFromSvg(path.join(__dirname, '../assets/play.svg'));
-  const pauseIcon = createIconFromSvg(path.join(__dirname, '../assets/pause.svg'));
-  const nextIcon = createIconFromSvg(path.join(__dirname, '../assets/next.svg'));
+  const prevIcon = createIcon('prev');
+  const playIcon = createIcon('play');
+  const pauseIcon = createIcon('pause');
+  const nextIcon = createIcon('next');
   
   try {
     mainWindow.setThumbarButtons([
@@ -138,6 +146,7 @@ function setupThumbarButtons(isPlaying) {
         click: () => mainWindow.webContents.send('thumbar-next')
       }
     ]);
+    console.log('Thumbar buttons set successfully, isPlaying:', isPlaying);
   } catch (e) {
     console.log('Error setting thumbar buttons:', e.message);
   }
