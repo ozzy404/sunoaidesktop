@@ -25,10 +25,50 @@ class SunoPlayer {
     this.bindEvents();
     this.checkAuth();
     this.setupAudioEvents();
+    this.setupTokenExpiryListeners();
     
     // Listen for tray commands
     if (window.electronAPI) {
       window.electronAPI.onTrayTogglePlay(() => this.togglePlay());
+    }
+  }
+  
+  // Setup token expiry notifications from main process
+  setupTokenExpiryListeners() {
+    if (window.electronAPI) {
+      // Token expiring soon (5 min warning)
+      window.electronAPI.onTokenExpiringSoon?.(() => {
+        this.showNotification(t('tokenExpiringSoon'), 'warning');
+      });
+      
+      // Token expired
+      window.electronAPI.onTokenExpired?.(() => {
+        this.showNotification(t('sessionExpired'), 'error');
+        setTimeout(() => this.logout(), 2000);
+      });
+    }
+  }
+  
+  // Show notification banner
+  showNotification(message, type = 'info') {
+    // Remove existing notification if any
+    const existing = document.querySelector('.notification-banner');
+    if (existing) existing.remove();
+    
+    const banner = document.createElement('div');
+    banner.className = `notification-banner notification-${type}`;
+    banner.innerHTML = `
+      <span>${message}</span>
+      <button class="notification-close">&times;</button>
+    `;
+    
+    banner.querySelector('.notification-close').addEventListener('click', () => banner.remove());
+    
+    document.body.appendChild(banner);
+    
+    // Auto-remove after 10 seconds for warnings
+    if (type === 'warning') {
+      setTimeout(() => banner.remove(), 10000);
     }
   }
   

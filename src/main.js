@@ -15,9 +15,12 @@ let authWindow = null;
 let cachedJwtToken = null;
 let jwtTokenExpiry = 0;
 
+// Session cookies for token refresh
+let sessionCookies = null;
+
 // URLs
 const SUNO_URL = 'https://suno.com';
-const SUNO_API_URL = 'https://studio-api.prod.suno.com';
+const CLERK_URL = 'https://clerk.suno.com';
 
 // i18n for main process
 const translations = {
@@ -29,19 +32,23 @@ const translations = {
     pause: 'Pause',
     play: 'Play',
     next: 'Next',
-    authTitle: 'Authorization - paste JWT token',
+    authTitle: 'Authorization',
     authHeader: '🔐 Suno AI Authorization',
-    howToGetToken: 'How to get the token:',
-    method1: 'Method 1 (simple):',
-    method1Steps: ['Log in to suno.com in your browser', 'Press F12 → Console tab', 'Paste this code and press Enter:'],
-    method1Note: 'Token will be copied automatically!',
-    method2: 'Method 2 (via Network):',
-    method2Steps: ['F12 → Network → refresh the page', 'Find any request to studio-api', 'Copy authorization header (after "Bearer ")'],
+    authInstructions: 'To authorize, you need to get the JWT token from Suno website:',
+    step1: 'Log in to suno.com in your browser',
+    step2: 'Press F12 to open Developer Tools',
+    step3: 'Go to Network tab',
+    step4: 'Refresh the page (F5)',
+    step5: 'Find any request to studio-api.prod.suno.com',
+    step6: 'Click on it → Headers tab',
+    step7: 'Find "Authorization" header',
+    step8: 'Copy the value after "Bearer "',
     placeholder: 'Paste JWT token here (starts with eyJ...)',
-    tokenNote: '⚠️ Token is valid for ~1 hour.',
+    tokenNote: '⚠️ Token expires in ~1 hour. The app will try to refresh automatically.',
     cancel: 'Cancel',
-    authorize: 'Authorize',
-    error: 'Error: paste a valid JWT token'
+    authorize: 'Sign In',
+    error: 'Error: paste a valid JWT token (starts with eyJ)',
+    sessionInfo: 'Your session will be saved for automatic refresh.'
   },
   uk: {
     open: 'Відкрити',
@@ -51,19 +58,23 @@ const translations = {
     pause: 'Пауза',
     play: 'Грати',
     next: 'Наступний',
-    authTitle: 'Авторизація - вставте JWT токен',
+    authTitle: 'Авторизація',
     authHeader: '🔐 Авторизація Suno AI',
-    howToGetToken: 'Як отримати токен:',
-    method1: 'Спосіб 1 (простий):',
-    method1Steps: ['Увійдіть на suno.com у браузері', 'Натисніть F12 → вкладка Console', 'Вставте цей код і натисніть Enter:'],
-    method1Note: 'Токен скопіюється автоматично!',
-    method2: 'Спосіб 2 (через Network):',
-    method2Steps: ['F12 → Network → оновіть сторінку', 'Знайдіть будь-який запит до studio-api', 'Скопіюйте authorization header (після "Bearer ")'],
+    authInstructions: 'Для авторизації потрібно отримати JWT токен з сайту Suno:',
+    step1: 'Увійдіть на suno.com у браузері',
+    step2: 'Натисніть F12 щоб відкрити DevTools',
+    step3: 'Перейдіть на вкладку Network',
+    step4: 'Оновіть сторінку (F5)',
+    step5: 'Знайдіть будь-який запит до studio-api.prod.suno.com',
+    step6: 'Клікніть на нього → вкладка Headers',
+    step7: 'Знайдіть заголовок "Authorization"',
+    step8: 'Скопіюйте значення після "Bearer "',
     placeholder: 'Вставте JWT токен сюди (починається з eyJ...)',
-    tokenNote: '⚠️ Токен дійсний ~1 годину.',
+    tokenNote: '⚠️ Токен діє ~1 годину. Додаток спробує оновити автоматично.',
     cancel: 'Скасувати',
-    authorize: 'Авторизуватися',
-    error: 'Помилка: вставте правильний JWT токен'
+    authorize: 'Увійти',
+    error: 'Помилка: вставте правильний JWT токен (починається з eyJ)',
+    sessionInfo: 'Ваша сесія буде збережена для автоматичного оновлення.'
   },
   ru: {
     open: 'Открыть',
@@ -73,19 +84,23 @@ const translations = {
     pause: 'Пауза',
     play: 'Играть',
     next: 'Следующий',
-    authTitle: 'Авторизация - вставьте JWT токен',
+    authTitle: 'Авторизация',
     authHeader: '🔐 Авторизация Suno AI',
-    howToGetToken: 'Как получить токен:',
-    method1: 'Способ 1 (простой):',
-    method1Steps: ['Войдите на suno.com в браузере', 'Нажмите F12 → вкладка Console', 'Вставьте этот код и нажмите Enter:'],
-    method1Note: 'Токен скопируется автоматически!',
-    method2: 'Способ 2 (через Network):',
-    method2Steps: ['F12 → Network → обновите страницу', 'Найдите любой запрос к studio-api', 'Скопируйте authorization header (после "Bearer ")'],
+    authInstructions: 'Для авторизации нужно получить JWT токен с сайта Suno:',
+    step1: 'Войдите на suno.com в браузере',
+    step2: 'Нажмите F12 чтобы открыть DevTools',
+    step3: 'Перейдите на вкладку Network',
+    step4: 'Обновите страницу (F5)',
+    step5: 'Найдите любой запрос к studio-api.prod.suno.com',
+    step6: 'Кликните на него → вкладка Headers',
+    step7: 'Найдите заголовок "Authorization"',
+    step8: 'Скопируйте значение после "Bearer "',
     placeholder: 'Вставьте JWT токен сюда (начинается с eyJ...)',
-    tokenNote: '⚠️ Токен действителен ~1 час.',
+    tokenNote: '⚠️ Токен действует ~1 час. Приложение попробует обновить автоматически.',
     cancel: 'Отмена',
-    authorize: 'Авторизоваться',
-    error: 'Ошибка: вставьте правильный JWT токен'
+    authorize: 'Войти',
+    error: 'Ошибка: вставьте правильный JWT токен (начинается с eyJ)',
+    sessionInfo: 'Ваша сессия будет сохранена для автоматического обновления.'
   }
 };
 
@@ -102,7 +117,6 @@ function t(key) {
 }
 
 function createWindow() {
-  // Create app icon (32x32)
   const createAppIcon = () => {
     const size = 32;
     const pixels = Buffer.alloc(size * size * 4, 0);
@@ -117,7 +131,6 @@ function createWindow() {
       }
     };
     
-    // Circle background (purple gradient)
     const cx = 16, cy = 16, r = 14;
     for (let y = 0; y < size; y++) {
       for (let x = 0; x < size; x++) {
@@ -129,7 +142,6 @@ function createWindow() {
       }
     }
     
-    // Sound wave bars (pink)
     [[8, 11, 21], [12, 9, 23], [16, 7, 25], [20, 9, 23], [24, 11, 21]].forEach(([bx, y1, y2]) => {
       for (let y = y1; y <= y2; y++) {
         setPixel(bx, y, 236, 72, 153, 255);
@@ -183,7 +195,6 @@ function createWindow() {
 }
 
 function createTray() {
-  // Create tray icon (16x16)
   const createTrayIcon = () => {
     const size = 16;
     const pixels = Buffer.alloc(size * size * 4, 0);
@@ -198,7 +209,6 @@ function createTray() {
       }
     };
     
-    // Circle background
     const cx = 8, cy = 8, r = 7;
     for (let y = 0; y < size; y++) {
       for (let x = 0; x < size; x++) {
@@ -208,7 +218,6 @@ function createTray() {
       }
     }
     
-    // Sound wave bars
     [[4, 5, 10], [6, 4, 11], [8, 3, 12], [10, 4, 11], [12, 5, 10]].forEach(([bx, y1, y2]) => {
       for (let y = y1; y <= y2; y++) setPixel(bx, y, 236, 72, 153, 255);
     });
@@ -324,27 +333,27 @@ function setupThumbarButtons(isPlaying) {
   }
 }
 
-// Authorization via system browser
+// Authorization
 ipcMain.handle('open-auth-window', async () => {
   return new Promise((resolve) => {
     console.log('Opening system browser for Suno login...');
     shell.openExternal(SUNO_URL);
-    showCookieInputWindow(resolve);
+    showTokenInputWindow(resolve);
   });
 });
 
-function showCookieInputWindow(resolve) {
+function showTokenInputWindow(resolve) {
   if (authWindow && !authWindow.isDestroyed()) {
     authWindow.close();
     authWindow = null;
   }
   
   ipcMain.removeAllListeners('jwt-submitted');
-  ipcMain.removeAllListeners('cookie-cancelled');
+  ipcMain.removeAllListeners('auth-cancelled');
   
   authWindow = new BrowserWindow({
-    width: 550,
-    height: 580,
+    width: 520,
+    height: 620,
     parent: mainWindow,
     modal: true,
     webPreferences: {
@@ -374,105 +383,115 @@ function showCookieInputWindow(resolve) {
           font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
           background: linear-gradient(135deg, #1a1a2e 0%, #16213e 100%);
           color: white;
-          padding: 20px;
+          padding: 24px;
           height: 100vh;
           overflow-y: auto;
         }
-        h2 { margin-bottom: 15px; color: #a78bfa; }
+        h2 { margin-bottom: 16px; color: #a78bfa; font-size: 20px; }
         .instructions { 
-          background: rgba(255,255,255,0.1); 
-          padding: 15px; 
-          border-radius: 8px; 
-          margin-bottom: 15px;
-          font-size: 12px;
-          line-height: 1.6;
+          background: rgba(255,255,255,0.08); 
+          padding: 16px; 
+          border-radius: 12px; 
+          margin-bottom: 16px;
+          font-size: 13px;
+          line-height: 1.7;
         }
-        .instructions ol { margin-left: 20px; }
-        .instructions li { margin: 8px 0; }
-        .instructions code { 
-          background: rgba(0,0,0,0.3); 
-          padding: 2px 6px; 
-          border-radius: 4px;
-          font-family: monospace;
-          color: #a78bfa;
-        }
-        .method { 
-          background: rgba(124, 58, 237, 0.2); 
-          padding: 10px; 
-          border-radius: 6px; 
-          margin: 10px 0;
+        .instructions p { margin-bottom: 12px; color: #a78bfa; font-weight: 600; }
+        .steps { 
+          background: rgba(124, 58, 237, 0.15); 
+          padding: 14px; 
+          border-radius: 8px;
           border-left: 3px solid #7c3aed;
         }
-        .method-title { font-weight: bold; color: #a78bfa; margin-bottom: 5px; }
+        .step { 
+          display: flex; 
+          align-items: flex-start; 
+          margin: 8px 0;
+          color: #e2e8f0;
+        }
+        .step-num {
+          background: #7c3aed;
+          color: white;
+          width: 22px;
+          height: 22px;
+          border-radius: 50%;
+          display: flex;
+          align-items: center;
+          justify-content: center;
+          font-size: 12px;
+          font-weight: bold;
+          margin-right: 10px;
+          flex-shrink: 0;
+        }
+        .highlight { color: #fbbf24; font-weight: 500; }
         textarea { 
           width: 100%; 
-          height: 80px; 
-          padding: 10px;
+          height: 90px; 
+          padding: 12px;
           border: 2px solid #7c3aed;
-          border-radius: 8px;
-          background: rgba(255,255,255,0.1);
+          border-radius: 10px;
+          background: rgba(255,255,255,0.08);
           color: white;
-          font-family: monospace;
-          font-size: 11px;
+          font-family: 'Consolas', 'Monaco', monospace;
+          font-size: 12px;
           resize: none;
-          margin-bottom: 10px;
+          margin-bottom: 8px;
         }
-        textarea:focus { outline: none; border-color: #a78bfa; }
-        textarea::placeholder { color: rgba(255,255,255,0.5); }
-        .buttons { display: flex; gap: 10px; }
+        textarea:focus { outline: none; border-color: #a78bfa; background: rgba(255,255,255,0.12); }
+        textarea::placeholder { color: rgba(255,255,255,0.4); }
+        .buttons { display: flex; gap: 12px; margin-top: 12px; }
         button {
           flex: 1;
-          padding: 12px;
+          padding: 14px;
           border: none;
-          border-radius: 8px;
-          font-size: 14px;
-          font-weight: bold;
+          border-radius: 10px;
+          font-size: 15px;
+          font-weight: 600;
           cursor: pointer;
           transition: all 0.2s;
         }
-        .btn-primary { background: #7c3aed; color: white; }
-        .btn-primary:hover { background: #6d28d9; }
+        .btn-primary { 
+          background: linear-gradient(135deg, #7c3aed 0%, #a855f7 100%); 
+          color: white; 
+        }
+        .btn-primary:hover { transform: translateY(-1px); box-shadow: 0 4px 12px rgba(124,58,237,0.4); }
         .btn-secondary { background: rgba(255,255,255,0.1); color: white; }
-        .btn-secondary:hover { background: rgba(255,255,255,0.2); }
-        .error { color: #f87171; font-size: 12px; margin-top: 10px; display: none; }
-        .note { color: #fbbf24; font-size: 11px; margin-top: 5px; }
+        .btn-secondary:hover { background: rgba(255,255,255,0.15); }
+        .error { color: #f87171; font-size: 12px; margin-top: 8px; display: none; text-align: center; }
+        .note { color: #94a3b8; font-size: 12px; margin-top: 4px; }
+        .session-info { 
+          color: #10b981; 
+          font-size: 11px; 
+          margin-top: 8px; 
+          text-align: center;
+          opacity: 0.9;
+        }
       </style>
     </head>
     <body>
       <h2>${tr.authHeader}</h2>
       
       <div class="instructions">
-        <p><strong>${tr.howToGetToken}</strong></p>
-        
-        <div class="method">
-          <div class="method-title">${tr.method1}</div>
-          <ol>
-            <li>${tr.method1Steps[0]}</li>
-            <li>${tr.method1Steps[1]}</li>
-            <li>${tr.method1Steps[2]}</li>
-          </ol>
-          <code style="display:block; margin-top:8px; font-size:10px; word-break:break-all;">
-            copy(JSON.parse(localStorage.getItem('clerk-db-jwt'))?.tokensByInstance?.ins_2OZ6yMDg8lqdJEih1rozf8Ozmdn?.jwt || 'Token not found')
-          </code>
-          <li style="list-style:none; margin-top:5px;">${tr.method1Note}</li>
-        </div>
-        
-        <div class="method">
-          <div class="method-title">${tr.method2}</div>
-          <ol>
-            <li>${tr.method2Steps[0]}</li>
-            <li>${tr.method2Steps[1]}</li>
-            <li>${tr.method2Steps[2]}</li>
-          </ol>
+        <p>${tr.authInstructions}</p>
+        <div class="steps">
+          <div class="step"><span class="step-num">1</span>${tr.step1}</div>
+          <div class="step"><span class="step-num">2</span>${tr.step2}</div>
+          <div class="step"><span class="step-num">3</span>${tr.step3}</div>
+          <div class="step"><span class="step-num">4</span>${tr.step4}</div>
+          <div class="step"><span class="step-num">5</span>${tr.step5}</div>
+          <div class="step"><span class="step-num">6</span>${tr.step6}</div>
+          <div class="step"><span class="step-num">7</span>${tr.step7} <span class="highlight">"Authorization"</span></div>
+          <div class="step"><span class="step-num">8</span>${tr.step8}</div>
         </div>
       </div>
       
-      <textarea id="cookie-input" placeholder="${tr.placeholder}"></textarea>
+      <textarea id="token-input" placeholder="${tr.placeholder}" spellcheck="false"></textarea>
       <p class="note">${tr.tokenNote}</p>
+      <p class="session-info">✓ ${tr.sessionInfo}</p>
       
       <div class="buttons">
         <button class="btn-secondary" onclick="cancel()">${tr.cancel}</button>
-        <button class="btn-primary" onclick="submit()">${tr.authorize}</button>
+        <button class="btn-primary" onclick="submit()">🚀 ${tr.authorize}</button>
       </div>
       
       <p class="error" id="error">${tr.error}</p>
@@ -481,11 +500,13 @@ function showCookieInputWindow(resolve) {
         const { ipcRenderer } = require('electron');
         
         function submit() {
-          let value = document.getElementById('cookie-input').value.trim();
+          let value = document.getElementById('token-input').value.trim();
+          // Remove "Bearer " prefix if pasted with it
           if (value.toLowerCase().startsWith('bearer ')) {
-            value = value.substring(7);
+            value = value.substring(7).trim();
           }
-          if (!value || !value.startsWith('eyJ') || value.length < 100) {
+          // Validate JWT format
+          if (!value || !value.startsWith('eyJ') || value.split('.').length !== 3) {
             document.getElementById('error').style.display = 'block';
             return;
           }
@@ -493,12 +514,16 @@ function showCookieInputWindow(resolve) {
         }
         
         function cancel() {
-          ipcRenderer.send('cookie-cancelled');
+          ipcRenderer.send('auth-cancelled');
         }
         
-        document.getElementById('cookie-input').addEventListener('keydown', (e) => {
+        // Submit on Ctrl+Enter
+        document.getElementById('token-input').addEventListener('keydown', (e) => {
           if (e.key === 'Enter' && e.ctrlKey) submit();
         });
+        
+        // Auto-focus
+        document.getElementById('token-input').focus();
       </script>
     </body>
     </html>
@@ -512,14 +537,21 @@ function showCookieInputWindow(resolve) {
     try {
       cachedJwtToken = jwtToken;
       
+      // Parse JWT to get expiry
       try {
         const payload = JSON.parse(Buffer.from(jwtToken.split('.')[1], 'base64').toString());
         jwtTokenExpiry = payload.exp * 1000;
         console.log('JWT token expires:', new Date(jwtTokenExpiry));
+        
+        // Extract user info for later refresh attempts
+        if (payload.sub) {
+          sessionCookies = { userId: payload.sub };
+        }
       } catch (e) {
-        jwtTokenExpiry = Date.now() + 3600000;
+        jwtTokenExpiry = Date.now() + 3600000; // Default 1 hour
       }
       
+      // Save to persistent storage
       const sunoSession = session.fromPartition('persist:suno');
       await sunoSession.cookies.set({
         url: SUNO_URL,
@@ -529,7 +561,19 @@ function showCookieInputWindow(resolve) {
         secure: true,
         httpOnly: true,
         sameSite: 'no_restriction',
-        expirationDate: Math.floor(jwtTokenExpiry / 1000),
+        expirationDate: Math.floor(Date.now() / 1000) + 86400 * 30, // Store for 30 days
+      });
+      
+      // Store expiry separately
+      await sunoSession.cookies.set({
+        url: SUNO_URL,
+        name: '__jwt_expiry',
+        value: String(jwtTokenExpiry),
+        path: '/',
+        secure: true,
+        httpOnly: true,
+        sameSite: 'no_restriction',
+        expirationDate: Math.floor(Date.now() / 1000) + 86400 * 30,
       });
       
       console.log('JWT token saved successfully');
@@ -544,7 +588,7 @@ function showCookieInputWindow(resolve) {
     }
   });
   
-  ipcMain.once('cookie-cancelled', () => {
+  ipcMain.once('auth-cancelled', () => {
     if (authWindow && !authWindow.isDestroyed()) {
       authWindow.close();
     }
@@ -554,34 +598,48 @@ function showCookieInputWindow(resolve) {
   authWindow.on('closed', () => {
     authWindow = null;
     ipcMain.removeAllListeners('jwt-submitted');
-    ipcMain.removeAllListeners('cookie-cancelled');
+    ipcMain.removeAllListeners('auth-cancelled');
   });
 }
 
 // Check authentication
 ipcMain.handle('check-auth', async () => {
   try {
+    // Check cached token first
     if (cachedJwtToken && Date.now() < jwtTokenExpiry - 60000) {
       return true;
     }
     
+    // Load from cookies
     const sunoSession = session.fromPartition('persist:suno');
     const cookies = await sunoSession.cookies.get({ url: SUNO_URL });
+    
     const jwtCookie = cookies.find(c => c.name === '__jwt_token');
+    const expiryCookie = cookies.find(c => c.name === '__jwt_expiry');
     
     if (jwtCookie?.value) {
-      try {
-        const payload = JSON.parse(Buffer.from(jwtCookie.value.split('.')[1], 'base64').toString());
-        if (payload.exp * 1000 > Date.now()) {
-          cachedJwtToken = jwtCookie.value;
-          jwtTokenExpiry = payload.exp * 1000;
-          return true;
-        }
-      } catch (e) {}
+      const expiry = expiryCookie ? parseInt(expiryCookie.value) : 0;
+      
+      // Check if token is still valid
+      if (expiry > Date.now()) {
+        cachedJwtToken = jwtCookie.value;
+        jwtTokenExpiry = expiry;
+        console.log('Loaded valid token from storage, expires:', new Date(jwtTokenExpiry));
+        return true;
+      }
+      
+      // Token expired - notify user
+      console.log('Token expired at:', new Date(expiry));
+      
+      // Send notification to renderer
+      if (mainWindow && !mainWindow.isDestroyed()) {
+        mainWindow.webContents.send('token-expired');
+      }
     }
     
     return false;
   } catch (e) {
+    console.log('Check auth error:', e.message);
     return false;
   }
 });
@@ -594,34 +652,65 @@ ipcMain.handle('logout', async () => {
     });
     cachedJwtToken = null;
     jwtTokenExpiry = 0;
+    sessionCookies = null;
     return true;
   } catch (e) {
     return false;
   }
 });
 
-// Get JWT token
+// Get JWT token (with expiry check)
 async function getJwtToken() {
+  // Check if cached token is still valid (with 60 sec buffer)
   if (cachedJwtToken && Date.now() < jwtTokenExpiry - 60000) {
     return cachedJwtToken;
   }
   
+  // Try to load from storage
   try {
     const sunoSession = session.fromPartition('persist:suno');
     const cookies = await sunoSession.cookies.get({ url: SUNO_URL });
+    
     const jwtCookie = cookies.find(c => c.name === '__jwt_token');
+    const expiryCookie = cookies.find(c => c.name === '__jwt_expiry');
     
     if (jwtCookie?.value) {
-      const payload = JSON.parse(Buffer.from(jwtCookie.value.split('.')[1], 'base64').toString());
-      if (payload.exp * 1000 > Date.now()) {
+      const expiry = expiryCookie ? parseInt(expiryCookie.value) : 0;
+      
+      if (expiry > Date.now()) {
         cachedJwtToken = jwtCookie.value;
-        jwtTokenExpiry = payload.exp * 1000;
+        jwtTokenExpiry = expiry;
         return cachedJwtToken;
       }
     }
-  } catch (e) {}
+  } catch (e) {
+    console.log('Error loading JWT:', e.message);
+  }
   
   return null;
+}
+
+// Check token expiry and notify renderer
+function startTokenExpiryCheck() {
+  setInterval(async () => {
+    if (cachedJwtToken && jwtTokenExpiry) {
+      const timeLeft = jwtTokenExpiry - Date.now();
+      
+      // Warn 5 minutes before expiry
+      if (timeLeft > 0 && timeLeft < 5 * 60 * 1000) {
+        if (mainWindow && !mainWindow.isDestroyed()) {
+          mainWindow.webContents.send('token-expiring-soon', Math.floor(timeLeft / 1000));
+        }
+      }
+      
+      // Token expired
+      if (timeLeft <= 0) {
+        if (mainWindow && !mainWindow.isDestroyed()) {
+          mainWindow.webContents.send('token-expired');
+        }
+      }
+    }
+  }, 60000); // Check every minute
 }
 
 // API Requests
@@ -635,7 +724,9 @@ ipcMain.handle('api-request', async (event, { url, method = 'GET', body = null }
         return;
       }
       
-      const browserToken = JSON.stringify({ token: Buffer.from(JSON.stringify({ timestamp: Date.now() })).toString('base64') });
+      const browserToken = JSON.stringify({ 
+        token: Buffer.from(JSON.stringify({ timestamp: Date.now() })).toString('base64') 
+      });
       const urlObj = new URL(url);
       
       const options = {
@@ -713,7 +804,10 @@ ipcMain.handle('api-request', async (event, { url, method = 'GET', body = null }
 });
 
 // App lifecycle
-app.whenReady().then(createWindow);
+app.whenReady().then(() => {
+  createWindow();
+  startTokenExpiryCheck();
+});
 
 app.on('window-all-closed', () => {
   if (process.platform !== 'darwin') app.quit();

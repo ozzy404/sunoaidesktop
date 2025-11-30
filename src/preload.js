@@ -31,6 +31,14 @@ contextBridge.exposeInMainWorld('electronAPI', {
     ipcRenderer.on('thumbar-next', callback);
   },
   
+  // Token expiry notifications
+  onTokenExpiringSoon: (callback) => {
+    ipcRenderer.on('token-expiring-soon', (event, secondsLeft) => callback(secondsLeft));
+  },
+  onTokenExpired: (callback) => {
+    ipcRenderer.on('token-expired', callback);
+  },
+  
   // Notify main process about playback state change
   notifyPlaybackState: (isPlaying) => {
     ipcRenderer.send('playback-state-changed', isPlaying);

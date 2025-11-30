@@ -8,31 +8,8 @@ const translations = {
     // Auth screen
     authTitle: 'Suno Desktop Player',
     authSubtitle: 'Listen to your Suno AI music',
-    loginButton: 'Sign in with Google',
-    loginHint: 'Opens Suno page for login',
-    loginHintDetail: 'Click "Sign In" on the Suno page, select your Google account',
-    
-    // Auth modal
-    authModalTitle: 'Suno AI Authorization',
-    authModalInstructions: 'How to get the token:',
-    authModalMethod1: 'Method 1 (simple):',
-    authModalMethod1Steps: [
-      'Log in to suno.com in your browser',
-      'Press F12 → Console tab',
-      'Paste this code and press Enter:'
-    ],
-    authModalMethod1Note: 'Token will be copied automatically!',
-    authModalMethod2: 'Method 2 (via Network):',
-    authModalMethod2Steps: [
-      'F12 → Network → refresh the page',
-      'Find any request to studio-api',
-      'Copy the authorization header (after "Bearer ")'
-    ],
-    authModalPlaceholder: 'Paste JWT token here (starts with eyJ...)',
-    authModalTokenNote: '⚠️ Token is valid for ~1 hour.',
-    authModalCancel: 'Cancel',
-    authModalSubmit: 'Authorize',
-    authModalError: 'Error: paste a valid JWT token',
+    loginButton: 'Sign In',
+    loginHint: 'Connect to your Suno account',
     
     // Navigation
     navAllTracks: 'All Tracks',
@@ -65,6 +42,7 @@ const translations = {
     
     // Notifications
     sessionExpired: 'Session expired. Please log in again.',
+    tokenExpiringSoon: 'Session expires in {min} min. Re-login recommended.',
     loadError: 'Loading error: ',
     noTracksFound: 'No tracks found. Create music at suno.com first',
     pageLoadError: 'Error loading page',
@@ -82,31 +60,12 @@ const translations = {
     // Auth screen
     authTitle: 'Suno Desktop Player',
     authSubtitle: 'Слухай свою музику з Suno AI',
-    loginButton: 'Увійти через Google',
+    loginButton: 'Увійти',
     loginHint: 'Відкриється сторінка Suno для входу',
-    loginHintDetail: 'Натисніть "Sign In" на сторінці Suno, виберіть Google акаунт',
+    loginHintDetail: 'Натисніть "Sign In" на сторінці Suno і увійдіть',
     
-    // Auth modal
-    authModalTitle: 'Авторизація Suno AI',
-    authModalInstructions: 'Як отримати токен:',
-    authModalMethod1: 'Спосіб 1 (простий):',
-    authModalMethod1Steps: [
-      'Увійдіть на suno.com у браузері',
-      'Натисніть F12 → вкладка Console',
-      'Вставте цей код і натисніть Enter:'
-    ],
-    authModalMethod1Note: 'Токен скопіюється автоматично!',
-    authModalMethod2: 'Спосіб 2 (через Network):',
-    authModalMethod2Steps: [
-      'F12 → Network → оновіть сторінку',
-      'Знайдіть будь-який запит до studio-api',
-      'Скопіюйте authorization header (після "Bearer ")'
-    ],
-    authModalPlaceholder: 'Вставте JWT токен сюди (починається з eyJ...)',
-    authModalTokenNote: '⚠️ Токен дійсний ~1 годину.',
-    authModalCancel: 'Скасувати',
-    authModalSubmit: 'Авторизуватися',
-    authModalError: 'Помилка: вставте правильний JWT токен',
+    // Token expiry
+    tokenExpiringSoon: '⏰ Сесія закінчується через 5 хвилин. Перезайдіть для продовження.',
     
     // Navigation
     navAllTracks: 'Всі треки',
@@ -156,31 +115,12 @@ const translations = {
     // Auth screen
     authTitle: 'Suno Desktop Player',
     authSubtitle: 'Слушай свою музыку из Suno AI',
-    loginButton: 'Войти через Google',
+    loginButton: 'Войти',
     loginHint: 'Откроется страница Suno для входа',
-    loginHintDetail: 'Нажмите "Sign In" на странице Suno, выберите Google аккаунт',
+    loginHintDetail: 'Нажмите "Sign In" на странице Suno и войдите',
     
-    // Auth modal
-    authModalTitle: 'Авторизация Suno AI',
-    authModalInstructions: 'Как получить токен:',
-    authModalMethod1: 'Способ 1 (простой):',
-    authModalMethod1Steps: [
-      'Войдите на suno.com в браузере',
-      'Нажмите F12 → вкладка Console',
-      'Вставьте этот код и нажмите Enter:'
-    ],
-    authModalMethod1Note: 'Токен скопируется автоматически!',
-    authModalMethod2: 'Способ 2 (через Network):',
-    authModalMethod2Steps: [
-      'F12 → Network → обновите страницу',
-      'Найдите любой запрос к studio-api',
-      'Скопируйте authorization header (после "Bearer ")'
-    ],
-    authModalPlaceholder: 'Вставьте JWT токен сюда (начинается с eyJ...)',
-    authModalTokenNote: '⚠️ Токен действителен ~1 час.',
-    authModalCancel: 'Отмена',
-    authModalSubmit: 'Авторизоваться',
-    authModalError: 'Ошибка: вставьте правильный JWT токен',
+    // Token expiry
+    tokenExpiringSoon: '⏰ Сессия истекает через 5 минут. Перезайдите для продолжения.',
     
     // Navigation
     navAllTracks: 'Все треки',
