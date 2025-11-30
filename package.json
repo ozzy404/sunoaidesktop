@@ -5,11 +5,14 @@
   "main": "src/main.js",
   "scripts": {
     "start": "electron .",
-    "build": "electron-builder",
-    "build:win": "electron-builder --win",
-    "build:mac": "electron-builder --mac",
-    "build:linux": "electron-builder --linux",
-    "publish": "electron-builder --win --publish always"
+    "build:icon": "node scripts/generate-icon.js",
+    "build": "npm run build:icon && electron-builder",
+    "build:win": "npm run build:icon && electron-builder --win",
+    "build:win64": "npm run build:icon && electron-builder --win --x64",
+    "build:win32": "npm run build:icon && electron-builder --win --ia32",
+    "build:mac": "npm run build:icon && electron-builder --mac",
+    "build:linux": "npm run build:icon && electron-builder --linux",
+    "publish": "npm run build:icon && electron-builder --win --x64 --ia32 --publish always"
   },
   "repository": {
     "type": "git",
@@ -24,16 +27,26 @@
   "build": {
     "appId": "com.suno.desktop.player",
     "productName": "Suno Desktop Player",
+    "artifactName": "${productName}-${version}-${os}-${arch}.${ext}",
     "directories": {
       "output": "dist"
     },
     "win": {
-      "target": ["nsis", "portable"],
+      "target": [
+        {
+          "target": "nsis",
+          "arch": ["x64", "ia32"]
+        },
+        {
+          "target": "portable",
+          "arch": ["x64", "ia32"]
+        }
+      ],
       "icon": "build/icon.ico"
     },
     "mac": {
       "target": "dmg",
-      "icon": "build/icon.icns"
+      "icon": "build/icon.png"
     },
     "linux": {
       "target": ["AppImage", "deb"],
@@ -42,7 +55,11 @@
     "nsis": {
       "oneClick": false,
       "allowToChangeInstallationDirectory": true,
-      "createDesktopShortcut": true
+      "createDesktopShortcut": true,
+      "artifactName": "${productName}-Setup-${version}-${arch}.${ext}"
+    },
+    "portable": {
+      "artifactName": "${productName}-Portable-${version}-${arch}.${ext}"
     },
     "files": [
       "src/**/*"
@@ -50,7 +67,8 @@
     "publish": {
       "provider": "github",
       "owner": "ozzy404",
-      "repo": "sunoaidesktop"
+      "repo": "sunoaidesktop",
+      "releaseType": "release"
     }
   }
 }
