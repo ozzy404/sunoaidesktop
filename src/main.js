@@ -44,6 +44,8 @@ function createWindow() {
 
   mainWindow.once('ready-to-show', () => {
     mainWindow.show();
+    // Initialize thumbar buttons after window is ready
+    setTimeout(() => setupThumbarButtons(false), 500);
   });
 
   mainWindow.loadFile(path.join(__dirname, 'renderer/index.html'));
@@ -57,7 +59,6 @@ function createWindow() {
   });
 
   createTray();
-  setupThumbarButtons(false); // Start with play button (not playing)
 }
 
 function createTray() {

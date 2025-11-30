@@ -9,6 +9,8 @@ class SunoPlayer {
     this.isPlaying = false;
     this.isRepeat = false;
     this.currentTab = 'all';
+    this.currentPage = 0;
+    this.hasMoreTracks = true;
     this.isAuthenticated = false;
     
     // API URLs - оновлені на основі HAR файлу
@@ -64,12 +66,32 @@ class SunoPlayer {
       this.audio.volume = e.target.value / 100;
     });
 
-    // Progress bar
-    document.getElementById('progress-bar')?.addEventListener('click', (e) => {
-      const rect = e.target.getBoundingClientRect();
-      const percent = (e.clientX - rect.left) / rect.width;
-      this.audio.currentTime = percent * this.audio.duration;
-    });
+    // Progress bar - use mousedown for immediate response
+    const progressBar = document.getElementById('progress-bar');
+    if (progressBar) {
+      const seekToPosition = (e) => {
+        const rect = progressBar.getBoundingClientRect();
+        const percent = Math.max(0, Math.min(1, (e.clientX - rect.left) / rect.width));
+        if (this.audio.duration && !isNaN(this.audio.duration)) {
+          this.audio.currentTime = percent * this.audio.duration;
+        }
+      };
+      
+      progressBar.addEventListener('click', seekToPosition);
+      
+      // Drag support for smooth seeking
+      let isDragging = false;
+      progressBar.addEventListener('mousedown', (e) => {
+        isDragging = true;
+        seekToPosition(e);
+      });
+      document.addEventListener('mousemove', (e) => {
+        if (isDragging) seekToPosition(e);
+      });
+      document.addEventListener('mouseup', () => {
+        isDragging = false;
+      });
+    }
 
     // Keyboard shortcuts
     document.addEventListener('keydown', (e) => {
@@ -198,12 +220,12 @@ class SunoPlayer {
     this.showLoading(false);
   }
 
-  async fetchUserTracks(likedOnly = false) {
+  async fetchUserTracks(likedOnly = false, page = 0) {
     // Suno AI API endpoint - на основі HAR файлу
-    let url = `${this.API_BASE}/api/feed/v2?hide_disliked=true&hide_gen_stems=true&hide_studio_clips=true&page=0`;
+    let url = `${this.API_BASE}/api/feed/v2?hide_disliked=true&hide_gen_stems=true&hide_studio_clips=true&page=${page}`;
     
     if (likedOnly) {
-      url = `${this.API_BASE}/api/feed/v2?is_liked=true&hide_disliked=true&hide_gen_stems=true&hide_studio_clips=true&page=0`;
+      url = `${this.API_BASE}/api/feed/v2?is_liked=true&hide_disliked=true&hide_gen_stems=true&hide_studio_clips=true&page=${page}`;
     }
     
     console.log('Fetching tracks from:', url);
@@ -362,6 +384,19 @@ class SunoPlayer {
         </div>
       `;
     }).join('');
+    
+    // Add pagination controls
+    container.innerHTML += `
+      <div class="pagination">
+        <button class="pagination-btn" id="btn-prev-page" ${this.currentPage === 0 ? 'disabled' : ''}>
+          ← Попередня
+        </button>
+        <span class="pagination-info">Сторінка ${this.currentPage + 1}</span>
+        <button class="pagination-btn" id="btn-next-page" ${!this.hasMoreTracks ? 'disabled' : ''}>
+          Наступна →
+        </button>
+      </div>
+    `;
 
     // Bind click events
     container.querySelectorAll('.track-item').forEach(item => {
@@ -379,6 +414,39 @@ class SunoPlayer {
         this.toggleLike(btn.dataset.id);
       });
     });
+    
+    // Pagination events
+    document.getElementById('btn-prev-page')?.addEventListener('click', () => this.loadPage(this.currentPage - 1));
+    document.getElementById('btn-next-page')?.addEventListener('click', () => this.loadPage(this.currentPage + 1));
+  }
+  
+  async loadPage(page) {
+    if (page < 0) return;
+    
+    this.currentPage = page;
+    this.showLoading(true);
+    
+    try {
+      const isLiked = this.currentTab === 'liked';
+      const newTracks = await this.fetchUserTracks(isLiked, page);
+      
+      if (isLiked) {
+        this.likedTracks = newTracks;
+      } else {
+        this.tracks = newTracks;
+      }
+      
+      this.hasMoreTracks = newTracks.length >= 20; // Assume 20 per page
+      this.renderTracks();
+      
+      // Scroll to top
+      document.getElementById('tracks-container')?.scrollTo(0, 0);
+    } catch (error) {
+      console.error('Failed to load page:', error);
+      this.showNotification('Помилка завантаження сторінки');
+    }
+    
+    this.showLoading(false);
   }
 
   showLoading(show) {
@@ -524,6 +592,8 @@ class SunoPlayer {
     }
     
     this.currentTab = tab;
+    this.currentPage = 0; // Reset page when switching tabs
+    this.hasMoreTracks = true;
     
     document.querySelectorAll('.nav-tab').forEach(t => {
       t.classList.toggle('active', t.dataset.tab === tab);
