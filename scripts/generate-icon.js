@@ -71,17 +71,18 @@ function generateIconPixels(size) {
     }
   }
   
-  // Draw sound wave bars (pink)
+  // Draw sound wave bars (pink) - centered
   const barColor = { r: 236, g: 72, b: 153 };
   const scale = size / 32;
   
-  // 5 bars with different heights
+  // 5 bars with different heights - centered at x=16 (middle of 32px base)
+  // Bar positions: 7, 11, 15, 19, 23 (centered around 15-16)
   const bars = [
-    { x: 8, y1: 11, y2: 21 },
-    { x: 12, y1: 9, y2: 23 },
-    { x: 16, y1: 7, y2: 25 },
-    { x: 20, y1: 9, y2: 23 },
-    { x: 24, y1: 11, y2: 21 }
+    { x: 7, y1: 11, y2: 21 },
+    { x: 11, y1: 9, y2: 23 },
+    { x: 15, y1: 7, y2: 25 },
+    { x: 19, y1: 9, y2: 23 },
+    { x: 23, y1: 11, y2: 21 }
   ];
   
   bars.forEach(bar => {
@@ -90,8 +91,10 @@ function generateIconPixels(size) {
     const by2 = Math.floor(bar.y2 * scale);
     const width = Math.max(2, Math.floor(2 * scale));
     
+    // Center the bar width
+    const offset = Math.floor(width / 2);
     for (let y = by1; y <= by2; y++) {
-      for (let w = 0; w < width; w++) {
+      for (let w = -offset; w < width - offset; w++) {
         setPixel(bx + w, y, barColor.r, barColor.g, barColor.b, 255);
       }
     }
@@ -141,16 +144,17 @@ function generatePngPixels(size) {
     }
   }
   
-  // Draw sound wave bars
+  // Draw sound wave bars - centered
   const barColor = { r: 236, g: 72, b: 153 };
   const scale = size / 32;
   
+  // 5 bars centered around x=15-16
   const bars = [
-    { x: 8, y1: 11, y2: 21 },
-    { x: 12, y1: 9, y2: 23 },
-    { x: 16, y1: 7, y2: 25 },
-    { x: 20, y1: 9, y2: 23 },
-    { x: 24, y1: 11, y2: 21 }
+    { x: 7, y1: 11, y2: 21 },
+    { x: 11, y1: 9, y2: 23 },
+    { x: 15, y1: 7, y2: 25 },
+    { x: 19, y1: 9, y2: 23 },
+    { x: 23, y1: 11, y2: 21 }
   ];
   
   bars.forEach(bar => {
@@ -159,8 +163,9 @@ function generatePngPixels(size) {
     const by2 = Math.floor(bar.y2 * scale);
     const width = Math.max(2, Math.floor(2 * scale));
     
+    const offset = Math.floor(width / 2);
     for (let y = by1; y <= by2; y++) {
-      for (let w = 0; w < width; w++) {
+      for (let w = -offset; w < width - offset; w++) {
         setPixel(bx + w, y, barColor.r, barColor.g, barColor.b, 255);
       }
     }

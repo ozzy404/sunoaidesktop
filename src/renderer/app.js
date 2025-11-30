@@ -495,6 +495,7 @@ class SunoPlayer {
     if (coverEl) {
       coverEl.src = track.cover || defaultCover;
       coverEl.onerror = () => { coverEl.src = defaultCover; };
+      coverEl.classList.remove('hidden'); // Show cover when track is selected
     }
     document.getElementById('current-title').textContent = track.title;
     document.getElementById('current-artist').textContent = track.artist;

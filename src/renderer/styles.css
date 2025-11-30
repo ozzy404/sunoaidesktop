@@ -436,6 +436,10 @@ body {
   background: var(--bg-tertiary);
 }
 
+.track-cover.hidden {
+  display: none;
+}
+
 .track-info {
   min-width: 0;
   flex: 1;
