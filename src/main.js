@@ -12,6 +12,10 @@ let mainWindow;
 let tray = null;
 let authWindow = null;
 
+// Зберігаємо JWT токен (кеш)
+let cachedJwtToken = null;
+let jwtTokenExpiry = 0;
+
 // URLs
 const SUNO_URL = 'https://suno.com';
 const SUNO_API_URL = 'https://studio-api.prod.suno.com';
@@ -101,14 +105,19 @@ ipcMain.handle('open-auth-window', async () => {
 });
 
 function showCookieInputWindow(resolve) {
+  // Закриваємо попереднє вікно якщо є
   if (authWindow && !authWindow.isDestroyed()) {
-    authWindow.focus();
-    return;
+    authWindow.close();
+    authWindow = null;
   }
   
+  // Видаляємо старі слухачі
+  ipcMain.removeAllListeners('jwt-submitted');
+  ipcMain.removeAllListeners('cookie-cancelled');
+  
   authWindow = new BrowserWindow({
-    width: 500,
-    height: 450,
+    width: 550,
+    height: 580,
     parent: mainWindow,
     modal: true,
     webPreferences: {
@@ -116,8 +125,13 @@ function showCookieInputWindow(resolve) {
       contextIsolation: false,
     },
     autoHideMenuBar: true,
-    title: 'Авторизація - вставте Cookie',
+    title: 'Авторизація - вставте JWT токен',
     resizable: false,
+    show: false,
+  });
+  
+  authWindow.once('ready-to-show', () => {
+    authWindow.show();
   });
   
   // HTML сторінка для вводу cookie
@@ -135,6 +149,7 @@ function showCookieInputWindow(resolve) {
           color: white;
           padding: 20px;
           height: 100vh;
+          overflow-y: auto;
         }
         h2 { margin-bottom: 15px; color: #a78bfa; }
         .instructions { 
@@ -142,29 +157,38 @@ function showCookieInputWindow(resolve) {
           padding: 15px; 
           border-radius: 8px; 
           margin-bottom: 15px;
-          font-size: 13px;
-          line-height: 1.5;
+          font-size: 12px;
+          line-height: 1.6;
         }
         .instructions ol { margin-left: 20px; }
-        .instructions li { margin: 5px 0; }
+        .instructions li { margin: 8px 0; }
         .instructions code { 
           background: rgba(0,0,0,0.3); 
           padding: 2px 6px; 
           border-radius: 4px;
           font-family: monospace;
+          color: #a78bfa;
         }
+        .method { 
+          background: rgba(124, 58, 237, 0.2); 
+          padding: 10px; 
+          border-radius: 6px; 
+          margin: 10px 0;
+          border-left: 3px solid #7c3aed;
+        }
+        .method-title { font-weight: bold; color: #a78bfa; margin-bottom: 5px; }
         textarea { 
           width: 100%; 
-          height: 120px; 
+          height: 80px; 
           padding: 10px;
           border: 2px solid #7c3aed;
           border-radius: 8px;
           background: rgba(255,255,255,0.1);
           color: white;
           font-family: monospace;
-          font-size: 12px;
+          font-size: 11px;
           resize: none;
-          margin-bottom: 15px;
+          margin-bottom: 10px;
         }
         textarea:focus { outline: none; border-color: #a78bfa; }
         textarea::placeholder { color: rgba(255,255,255,0.5); }
@@ -184,41 +208,63 @@ function showCookieInputWindow(resolve) {
         .btn-secondary { background: rgba(255,255,255,0.1); color: white; }
         .btn-secondary:hover { background: rgba(255,255,255,0.2); }
         .error { color: #f87171; font-size: 12px; margin-top: 10px; display: none; }
+        .note { color: #fbbf24; font-size: 11px; margin-top: 5px; }
       </style>
     </head>
     <body>
       <h2>🔐 Авторизація Suno AI</h2>
       
       <div class="instructions">
-        <p><strong>Інструкція:</strong></p>
-        <ol>
-          <li>У браузері, що відкрився, увійдіть до свого акаунту Suno</li>
-          <li>Після входу натисніть <code>F12</code> → вкладка <code>Application</code> (або <code>Storage</code>)</li>
-          <li>Зліва виберіть <code>Cookies</code> → <code>https://suno.com</code></li>
-          <li>Знайдіть cookie <code>__session</code> і скопіюйте його <strong>Value</strong></li>
-          <li>Вставте скопійоване значення нижче</li>
-        </ol>
+        <p><strong>Як отримати токен:</strong></p>
+        
+        <div class="method">
+          <div class="method-title">Спосіб 1 (простий):</div>
+          <ol>
+            <li>Увійдіть на suno.com у браузері</li>
+            <li>Натисніть <code>F12</code> → вкладка <code>Console</code></li>
+            <li>Вставте цей код і натисніть Enter:</li>
+          </ol>
+          <code style="display:block; margin-top:8px; font-size:10px; word-break:break-all;">
+            copy(JSON.parse(localStorage.getItem('clerk-db-jwt'))?.tokensByInstance?.ins_2OZ6yMDg8lqdJEih1rozf8Ozmdn?.jwt || 'Токен не знайдено')
+          </code>
+          <li style="list-style:none; margin-top:5px;">Токен скопіюється автоматично!</li>
+        </div>
+        
+        <div class="method">
+          <div class="method-title">Спосіб 2 (через Network):</div>
+          <ol>
+            <li><code>F12</code> → <code>Network</code> → оновіть сторінку</li>
+            <li>Знайдіть будь-який запит до <code>studio-api</code></li>
+            <li>Скопіюйте <code>authorization</code> header (після "Bearer ")</li>
+          </ol>
+        </div>
       </div>
       
-      <textarea id="cookie-input" placeholder="Вставте значення cookie __session сюди..."></textarea>
+      <textarea id="cookie-input" placeholder="Вставте JWT токен сюди (починається з eyJ...)"></textarea>
+      <p class="note">⚠️ Токен дійсний ~1 годину.</p>
       
       <div class="buttons">
         <button class="btn-secondary" onclick="cancel()">Скасувати</button>
         <button class="btn-primary" onclick="submit()">Авторизуватися</button>
       </div>
       
-      <p class="error" id="error">Помилка: вставте правильне значення cookie</p>
+      <p class="error" id="error">Помилка: вставте правильний JWT токен</p>
       
       <script>
         const { ipcRenderer } = require('electron');
         
         function submit() {
-          const value = document.getElementById('cookie-input').value.trim();
-          if (!value || value.length < 50) {
+          let value = document.getElementById('cookie-input').value.trim();
+          // Видаляємо "Bearer " якщо користувач скопіював з ним
+          if (value.toLowerCase().startsWith('bearer ')) {
+            value = value.substring(7);
+          }
+          // Перевіряємо що це JWT токен (починається з eyJ)
+          if (!value || !value.startsWith('eyJ') || value.length < 100) {
             document.getElementById('error').style.display = 'block';
             return;
           }
-          ipcRenderer.send('cookie-submitted', value);
+          ipcRenderer.send('jwt-submitted', value);
         }
         
         function cancel() {
@@ -235,44 +281,44 @@ function showCookieInputWindow(resolve) {
   
   authWindow.loadURL(`data:text/html;charset=utf-8,${encodeURIComponent(html)}`);
   
-  // Обробка відповіді
-  ipcMain.once('cookie-submitted', async (event, sessionValue) => {
-    console.log('Cookie submitted, length:', sessionValue.length);
-    
-    // Зберігаємо session cookie
-    const sunoSession = session.fromPartition('persist:suno');
+  // Обробка відповіді - JWT токен напряму
+  ipcMain.once('jwt-submitted', async (event, jwtToken) => {
+    console.log('JWT submitted, length:', jwtToken.length);
     
     try {
-      // Зберігаємо __session cookie
+      // Зберігаємо JWT токен в кеш
+      cachedJwtToken = jwtToken;
+      
+      // Парсимо токен для отримання expiry
+      try {
+        const payload = JSON.parse(Buffer.from(jwtToken.split('.')[1], 'base64').toString());
+        jwtTokenExpiry = payload.exp * 1000; // конвертуємо в мілісекунди
+        console.log('JWT token expires:', new Date(jwtTokenExpiry));
+      } catch (e) {
+        jwtTokenExpiry = Date.now() + 3600000; // 1 година за замовчуванням
+      }
+      
+      // Зберігаємо JWT в cookie для персистенції
+      const sunoSession = session.fromPartition('persist:suno');
       await sunoSession.cookies.set({
         url: SUNO_URL,
-        name: '__session',
-        value: sessionValue,
+        name: '__jwt_token',
+        value: jwtToken,
         path: '/',
         secure: true,
         httpOnly: true,
         sameSite: 'no_restriction',
+        expirationDate: Math.floor(jwtTokenExpiry / 1000),
       });
       
-      // Також зберігаємо для API
-      await sunoSession.cookies.set({
-        url: SUNO_API_URL,
-        name: '__session',
-        value: sessionValue,
-        path: '/',
-        secure: true,
-        httpOnly: true,
-        sameSite: 'no_restriction',
-      });
-      
-      console.log('Session cookie saved successfully');
+      console.log('JWT token saved successfully');
       
       if (authWindow && !authWindow.isDestroyed()) {
         authWindow.close();
       }
       resolve(true);
     } catch (e) {
-      console.log('Error saving cookie:', e.message);
+      console.log('Error saving JWT:', e.message);
       resolve(false);
     }
   });
@@ -286,22 +332,53 @@ function showCookieInputWindow(resolve) {
   
   authWindow.on('closed', () => {
     authWindow = null;
-    ipcMain.removeAllListeners('cookie-submitted');
+    // Якщо вікно закрито без відповіді - resolve(false)
+    ipcMain.removeAllListeners('jwt-submitted');
     ipcMain.removeAllListeners('cookie-cancelled');
+  });
+  
+  // Якщо вікно закривається кнопкою X без submit/cancel
+  authWindow.on('close', () => {
+    // resolve вже може бути викликаний, тому перевіряємо
+    setTimeout(() => {
+      if (authWindow === null) return; // вже оброблено
+      resolve(false);
+    }, 100);
   });
 }
 
-// Перевіряємо авторизацію
+// Перевіряємо авторизацію - тепер перевіряємо JWT токен
 ipcMain.handle('check-auth', async () => {
   try {
+    // Спочатку перевіряємо кеш
+    if (cachedJwtToken && Date.now() < jwtTokenExpiry - 60000) {
+      console.log('Check auth - cached JWT valid');
+      return true;
+    }
+    
+    // Завантажуємо з cookies
     const sunoSession = session.fromPartition('persist:suno');
     const cookies = await sunoSession.cookies.get({ url: SUNO_URL });
     
-    const sessionCookie = cookies.find(c => c.name === '__session');
+    const jwtCookie = cookies.find(c => c.name === '__jwt_token');
     
-    console.log('Check auth - session:', !!sessionCookie, 'total cookies:', cookies.length);
+    if (jwtCookie && jwtCookie.value) {
+      // Перевіряємо чи токен ще дійсний
+      try {
+        const payload = JSON.parse(Buffer.from(jwtCookie.value.split('.')[1], 'base64').toString());
+        if (payload.exp * 1000 > Date.now()) {
+          cachedJwtToken = jwtCookie.value;
+          jwtTokenExpiry = payload.exp * 1000;
+          console.log('Check auth - JWT loaded from cookie, valid until:', new Date(jwtTokenExpiry));
+          return true;
+        }
+      } catch (e) {
+        console.log('JWT parse error:', e.message);
+      }
+    }
     
-    return !!sessionCookie;
+    console.log('Check auth - no valid JWT found');
+    return false;
   } catch (e) {
     console.log('Check auth error:', e.message);
     return false;
@@ -314,6 +391,9 @@ ipcMain.handle('logout', async () => {
     await session.fromPartition('persist:suno').clearStorageData({
       storages: ['cookies', 'localstorage', 'sessionstorage']
     });
+    // Скидаємо кешований JWT токен
+    cachedJwtToken = null;
+    jwtTokenExpiry = 0;
     console.log('Logout completed');
     return true;
   } catch (e) {
@@ -322,27 +402,57 @@ ipcMain.handle('logout', async () => {
   }
 });
 
+// Функція отримання JWT токена з кешу або cookies
+async function getJwtToken() {
+  // Перевіряємо чи токен ще дійсний (з запасом 60 сек)
+  if (cachedJwtToken && Date.now() < jwtTokenExpiry - 60000) {
+    return cachedJwtToken;
+  }
+  
+  // Завантажуємо з cookies
+  try {
+    const sunoSession = session.fromPartition('persist:suno');
+    const cookies = await sunoSession.cookies.get({ url: SUNO_URL });
+    const jwtCookie = cookies.find(c => c.name === '__jwt_token');
+    
+    if (jwtCookie && jwtCookie.value) {
+      const payload = JSON.parse(Buffer.from(jwtCookie.value.split('.')[1], 'base64').toString());
+      if (payload.exp * 1000 > Date.now()) {
+        cachedJwtToken = jwtCookie.value;
+        jwtTokenExpiry = payload.exp * 1000;
+        return cachedJwtToken;
+      }
+    }
+  } catch (e) {
+    console.log('Error loading JWT from cookies:', e.message);
+  }
+  
+  return null;
+}
+
 // ============ API ЗАПИТИ ============
 ipcMain.handle('api-request', async (event, { url, method = 'GET', body = null }) => {
   return new Promise(async (resolve) => {
     try {
-      const sunoSession = session.fromPartition('persist:suno');
-      const cookies = await sunoSession.cookies.get({ url: SUNO_URL });
+      // Отримуємо JWT токен
+      const jwtToken = await getJwtToken();
       
-      const sessionCookie = cookies.find(c => c.name === '__session');
-      
-      if (!sessionCookie) {
-        console.log('No session cookie found for API request');
-        resolve({ ok: false, error: 'Not authenticated', status: 401 });
+      if (!jwtToken) {
+        console.log('No valid JWT token available');
+        resolve({ ok: false, error: 'Not authenticated - please login again', status: 401 });
         return;
       }
       
-      // Генеруємо headers як в браузері
-      const browserToken = Buffer.from(JSON.stringify({ timestamp: Date.now() })).toString('base64');
-      const browserTokenHeader = JSON.stringify({ token: browserToken });
-      const deviceId = require('crypto').randomUUID();
+      // Генеруємо browser-token як в браузері: {"token":"BASE64_TIMESTAMP_JSON"}
+      const timestampJson = JSON.stringify({ timestamp: Date.now() });
+      const base64Token = Buffer.from(timestampJson).toString('base64');
+      const browserToken = JSON.stringify({ token: base64Token });
+      
+      // Постійний device-id
+      let deviceId = 'd6d9cb68-255f-4da8-a39d-76d36b1454af';
       
       console.log('API Request:', url);
+      console.log('JWT token length:', jwtToken.length);
       
       const urlObj = new URL(url);
       
@@ -353,15 +463,17 @@ ipcMain.handle('api-request', async (event, { url, method = 'GET', body = null }
         method: method,
         headers: {
           'Accept': '*/*',
+          'Accept-Encoding': 'gzip, deflate, br',
           'Accept-Language': 'uk,en-US;q=0.9,en;q=0.8',
-          'Content-Type': 'application/json',
-          'Origin': SUNO_URL,
-          'Referer': `${SUNO_URL}/`,
-          'browser-token': browserTokenHeader,
+          'Authorization': `Bearer ${jwtToken}`,
+          'Cache-Control': 'no-cache',
+          'Origin': 'https://suno.com',
+          'Pragma': 'no-cache',
+          'Referer': 'https://suno.com/',
+          'browser-token': browserToken,
           'device-id': deviceId,
-          'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
-          'Cookie': `__session=${sessionCookie.value}`,
-          'sec-ch-ua': '"Not_A Brand";v="8", "Chromium";v="120"',
+          'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36',
+          'sec-ch-ua': '"Google Chrome";v="131", "Chromium";v="131", "Not_A Brand";v="24"',
           'sec-ch-ua-mobile': '?0',
           'sec-ch-ua-platform': '"Windows"',
           'sec-fetch-dest': 'empty',
@@ -371,23 +483,45 @@ ipcMain.handle('api-request', async (event, { url, method = 'GET', body = null }
       };
       
       if (body) {
+        options.headers['Content-Type'] = 'application/json';
         options.headers['Content-Length'] = Buffer.byteLength(JSON.stringify(body));
       }
       
       const req = https.request(options, (res) => {
-        let responseData = '';
+        let chunks = [];
         
         console.log('API Response status:', res.statusCode);
         
-        res.on('data', chunk => responseData += chunk);
+        res.on('data', chunk => chunks.push(chunk));
         
         res.on('end', () => {
+          let responseData = Buffer.concat(chunks);
+          
+          // Декомпресія якщо gzip
+          const encoding = res.headers['content-encoding'];
+          if (encoding === 'gzip' || encoding === 'br' || encoding === 'deflate') {
+            try {
+              const zlib = require('zlib');
+              if (encoding === 'gzip') {
+                responseData = zlib.gunzipSync(responseData);
+              } else if (encoding === 'br') {
+                responseData = zlib.brotliDecompressSync(responseData);
+              } else if (encoding === 'deflate') {
+                responseData = zlib.inflateSync(responseData);
+              }
+            } catch (e) {
+              console.log('Decompression error:', e.message);
+            }
+          }
+          
+          const responseText = responseData.toString('utf8');
+          
           try {
-            const json = JSON.parse(responseData);
+            const json = JSON.parse(responseText);
             resolve({ ok: res.statusCode >= 200 && res.statusCode < 300, data: json, status: res.statusCode });
           } catch (e) {
-            console.log('Response parse error:', responseData.substring(0, 300));
-            resolve({ ok: false, error: 'Invalid JSON', raw: responseData.substring(0, 500), status: res.statusCode });
+            console.log('Response parse error:', responseText.substring(0, 300));
+            resolve({ ok: false, error: 'Invalid JSON', raw: responseText.substring(0, 500), status: res.statusCode });
           }
         });
       });

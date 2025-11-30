@@ -210,20 +210,40 @@ class SunoPlayer {
 
   formatTracks(rawTracks) {
     // Формат даних на основі HAR файлу
-    return rawTracks.map(track => ({
-      id: track.id,
-      title: track.title || 'Untitled',
-      artist: track.display_name || 'Suno AI',
-      cover: track.image_url || track.image_large_url || '',
-      coverLarge: track.image_large_url || track.image_url || '',
-      audio: track.audio_url || '',
-      duration: track.metadata?.duration || 0,
-      liked: track.is_liked || false,
-      playCount: track.play_count || 0,
-      tags: track.metadata?.tags || '',
-      createdAt: track.created_at,
-      status: track.status
-    }));
+    return rawTracks.map(track => {
+      // Визначаємо правильний URL для картинки
+      let coverUrl = track.image_url || track.image_large_url || '';
+      
+      // Якщо є coverUrl і він валідний
+      if (coverUrl && !coverUrl.startsWith('data:')) {
+        // Використовуємо HTTPS
+        if (coverUrl.startsWith('http:')) {
+          coverUrl = coverUrl.replace('http:', 'https:');
+        }
+      }
+      
+      // Визначаємо URL для аудіо
+      let audioUrl = track.audio_url || '';
+      if (audioUrl && audioUrl.startsWith('http:')) {
+        audioUrl = audioUrl.replace('http:', 'https:');
+      }
+      
+      return {
+        id: track.id,
+        title: track.title || 'Untitled',
+        artist: track.display_name || track.handle || 'Suno AI',
+        cover: coverUrl,
+        coverLarge: track.image_large_url || coverUrl,
+        audio: audioUrl,
+        duration: track.metadata?.duration || track.duration || 0,
+        liked: track.is_liked === true,
+        playCount: track.play_count || 0,
+        tags: track.metadata?.tags || '',
+        prompt: track.metadata?.prompt || '',
+        createdAt: track.created_at,
+        status: track.status
+      };
+    }).filter(track => track.status === 'complete' && track.audio);
   }
 
   loadDemoTracks() {
@@ -269,7 +289,7 @@ class SunoPlayer {
     let filteredTracks = this.tracks;
     
     if (this.currentTab === 'liked') {
-      // Використовуємо окремо завантажені лайкнуті треки
+      // Використовуємо окремо завантажені лайкнуті треки АБО фільтруємо з усіх
       filteredTracks = this.likedTracks.length > 0 ? this.likedTracks : this.tracks.filter(t => t.liked);
     }
     
@@ -284,20 +304,29 @@ class SunoPlayer {
     // Зберігаємо поточний список для навігації
     this.currentTrackList = filteredTracks;
     
-    container.innerHTML = filteredTracks.map((track, index) => `
-      <div class="track-item ${this.currentTrackIndex === index && this.currentTrackList === filteredTracks ? 'playing' : ''}" 
-           data-index="${index}" data-id="${track.id}">
-        <img class="cover" src="${track.cover}" alt="Cover" onerror="this.src='data:image/svg+xml,<svg xmlns=%22http://www.w3.org/2000/svg%22 width=%22100%22 height=%22100%22><rect fill=%22%23252542%22 width=%22100%22 height=%22100%22/><text x=%2250%22 y=%2255%22 text-anchor=%22middle%22 fill=%22%236b6b7b%22 font-size=%2240%22>🎵</text></svg>'">
-        <div class="info">
-          <div class="title">${this.escapeHtml(track.title)}</div>
-          <div class="meta">${this.escapeHtml(track.artist)} • ${track.playCount || 0} plays</div>
+    // Placeholder для картинок
+    const defaultCover = 'data:image/svg+xml,' + encodeURIComponent('<svg xmlns="http://www.w3.org/2000/svg" width="100" height="100"><rect fill="#252542" width="100" height="100"/><text x="50" y="55" text-anchor="middle" fill="#6b6b7b" font-size="40">🎵</text></svg>');
+    
+    container.innerHTML = filteredTracks.map((track, index) => {
+      const coverSrc = track.cover || defaultCover;
+      const isCurrentTrack = this.currentTrackIndex === index;
+      
+      return `
+        <div class="track-item ${isCurrentTrack ? 'playing' : ''}" 
+             data-index="${index}" data-id="${track.id}">
+          <img class="cover" src="${coverSrc}" alt="Cover" 
+               onerror="this.src='${defaultCover}'" 
+               loading="lazy">
+          <div class="info">
+            <div class="title">${this.escapeHtml(track.title)}</div>
+            <div class="meta">${this.escapeHtml(track.artist)} • ${this.formatTime(track.duration)}</div>
+          </div>
+          <button class="like-btn ${track.liked ? 'liked' : ''}" data-id="${track.id}">
+            ${track.liked ? '❤️' : '🤍'}
+          </button>
         </div>
-        <span class="duration">${this.formatTime(track.duration)}</span>
-        <button class="like-btn ${track.liked ? 'liked' : ''}" data-id="${track.id}">
-          ${track.liked ? '❤️' : '🤍'}
-        </button>
-      </div>
-    `).join('');
+      `;
+    }).join('');
 
     // Bind click events
     container.querySelectorAll('.track-item').forEach(item => {
@@ -332,13 +361,22 @@ class SunoPlayer {
 
   // ============ Playback ============
   playTrack(index) {
-    if (index < 0 || index >= this.tracks.length) return;
+    // Використовуємо поточний відфільтрований список
+    const trackList = this.currentTrackList || this.tracks;
+    if (index < 0 || index >= trackList.length) return;
     
-    const track = this.tracks[index];
+    const track = trackList[index];
     this.currentTrackIndex = index;
     
+    // Placeholder для картинки
+    const defaultCover = 'data:image/svg+xml,' + encodeURIComponent('<svg xmlns="http://www.w3.org/2000/svg" width="100" height="100"><rect fill="#252542" width="100" height="100"/><text x="50" y="55" text-anchor="middle" fill="#6b6b7b" font-size="40">🎵</text></svg>');
+    
     // Оновлюємо UI
-    document.getElementById('current-cover').src = track.cover;
+    const coverEl = document.getElementById('current-cover');
+    if (coverEl) {
+      coverEl.src = track.cover || defaultCover;
+      coverEl.onerror = () => { coverEl.src = defaultCover; };
+    }
     document.getElementById('current-title').textContent = track.title;
     document.getElementById('current-artist').textContent = track.artist;
     
@@ -376,17 +414,19 @@ class SunoPlayer {
   }
 
   nextTrack() {
-    if (this.tracks.length === 0) return;
+    const trackList = this.currentTrackList || this.tracks;
+    if (trackList.length === 0) return;
     
     let nextIndex = this.currentTrackIndex + 1;
-    if (nextIndex >= this.tracks.length) {
+    if (nextIndex >= trackList.length) {
       nextIndex = 0;
     }
     this.playTrack(nextIndex);
   }
 
   prevTrack() {
-    if (this.tracks.length === 0) return;
+    const trackList = this.currentTrackList || this.tracks;
+    if (trackList.length === 0) return;
     
     // Якщо пройшло більше 3 секунд - перезапускаємо поточний трек
     if (this.audio.currentTime > 3) {
@@ -396,7 +436,7 @@ class SunoPlayer {
     
     let prevIndex = this.currentTrackIndex - 1;
     if (prevIndex < 0) {
-      prevIndex = this.tracks.length - 1;
+      prevIndex = trackList.length - 1;
     }
     this.playTrack(prevIndex);
   }
@@ -441,6 +481,12 @@ class SunoPlayer {
 
   // ============ Tabs & Likes ============
   switchTab(tab) {
+    // Якщо натискаємо на налаштування - показуємо модалку
+    if (tab === 'settings') {
+      this.showSettingsModal();
+      return;
+    }
+    
     this.currentTab = tab;
     
     document.querySelectorAll('.nav-tab').forEach(t => {
@@ -448,6 +494,171 @@ class SunoPlayer {
     });
     
     this.renderTracks();
+  }
+  
+  showSettingsModal() {
+    // Показуємо модальне вікно налаштувань замість виходу
+    let modal = document.getElementById('settings-modal');
+    if (!modal) {
+      modal = document.createElement('div');
+      modal.id = 'settings-modal';
+      modal.innerHTML = `
+        <div class="modal-overlay" onclick="window.sunoPlayer.hideSettingsModal()">
+          <div class="modal-content" onclick="event.stopPropagation()">
+            <h3>⚙️ Налаштування</h3>
+            <div class="settings-list">
+              <div class="setting-item">
+                <span>🔊 Гучність</span>
+                <input type="range" id="settings-volume" min="0" max="100" value="${Math.round(this.audio.volume * 100)}">
+              </div>
+              <div class="setting-item">
+                <span>🔁 Повтор</span>
+                <label class="switch">
+                  <input type="checkbox" id="settings-repeat" ${this.isRepeat ? 'checked' : ''}>
+                  <span class="slider"></span>
+                </label>
+              </div>
+              <hr>
+              <button class="btn-logout-settings" onclick="window.sunoPlayer.logout(); window.sunoPlayer.hideSettingsModal();">🚪 Вийти з акаунту</button>
+            </div>
+            <button class="btn-close-modal" onclick="window.sunoPlayer.hideSettingsModal()">✕</button>
+          </div>
+        </div>
+      `;
+      modal.style.cssText = `
+        position: fixed;
+        top: 0;
+        left: 0;
+        right: 0;
+        bottom: 0;
+        z-index: 1000;
+      `;
+      document.body.appendChild(modal);
+      
+      // Стилі для модалки
+      const style = document.createElement('style');
+      style.textContent = `
+        .modal-overlay {
+          width: 100%;
+          height: 100%;
+          background: rgba(0,0,0,0.7);
+          display: flex;
+          align-items: center;
+          justify-content: center;
+        }
+        .modal-content {
+          background: #1a1a2e;
+          border-radius: 16px;
+          padding: 24px;
+          width: 90%;
+          max-width: 320px;
+          position: relative;
+        }
+        .modal-content h3 {
+          color: #a78bfa;
+          margin-bottom: 20px;
+        }
+        .settings-list {
+          display: flex;
+          flex-direction: column;
+          gap: 16px;
+        }
+        .setting-item {
+          display: flex;
+          justify-content: space-between;
+          align-items: center;
+          color: white;
+        }
+        .setting-item input[type="range"] {
+          width: 120px;
+        }
+        .btn-logout-settings {
+          background: rgba(239, 68, 68, 0.2);
+          color: #f87171;
+          border: 1px solid #f87171;
+          padding: 12px;
+          border-radius: 8px;
+          cursor: pointer;
+          font-size: 14px;
+          margin-top: 8px;
+        }
+        .btn-logout-settings:hover {
+          background: rgba(239, 68, 68, 0.3);
+        }
+        .btn-close-modal {
+          position: absolute;
+          top: 12px;
+          right: 12px;
+          background: none;
+          border: none;
+          color: #6b6b7b;
+          font-size: 20px;
+          cursor: pointer;
+        }
+        hr {
+          border: none;
+          border-top: 1px solid #2a2a4a;
+        }
+        .switch {
+          position: relative;
+          width: 48px;
+          height: 24px;
+        }
+        .switch input {
+          opacity: 0;
+          width: 0;
+          height: 0;
+        }
+        .slider {
+          position: absolute;
+          cursor: pointer;
+          top: 0;
+          left: 0;
+          right: 0;
+          bottom: 0;
+          background-color: #2a2a4a;
+          transition: .3s;
+          border-radius: 24px;
+        }
+        .slider:before {
+          position: absolute;
+          content: "";
+          height: 18px;
+          width: 18px;
+          left: 3px;
+          bottom: 3px;
+          background-color: white;
+          transition: .3s;
+          border-radius: 50%;
+        }
+        input:checked + .slider {
+          background-color: #7c3aed;
+        }
+        input:checked + .slider:before {
+          transform: translateX(24px);
+        }
+      `;
+      modal.appendChild(style);
+      
+      // Events
+      document.getElementById('settings-volume').addEventListener('input', (e) => {
+        this.audio.volume = e.target.value / 100;
+      });
+      document.getElementById('settings-repeat').addEventListener('change', (e) => {
+        this.isRepeat = e.target.checked;
+        this.audio.loop = this.isRepeat;
+        document.getElementById('btn-repeat')?.classList.toggle('active', this.isRepeat);
+      });
+    } else {
+      modal.style.display = 'block';
+    }
+  }
+  
+  hideSettingsModal() {
+    const modal = document.getElementById('settings-modal');
+    if (modal) {
+      modal.style.display = 'none';
+    }
   }
 
   toggleLike(trackId) {
