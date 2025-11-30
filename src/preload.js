@@ -24,6 +24,22 @@ contextBridge.exposeInMainWorld('electronAPI', {
     ipcRenderer.on('tray-toggle-play', callback);
   },
   
+  // Слухаємо команди з Windows taskbar thumbnail toolbar
+  onThumbarPrev: (callback) => {
+    ipcRenderer.on('thumbar-prev', callback);
+  },
+  onThumbarPlayPause: (callback) => {
+    ipcRenderer.on('thumbar-play-pause', callback);
+  },
+  onThumbarNext: (callback) => {
+    ipcRenderer.on('thumbar-next', callback);
+  },
+  
+  // Повідомляємо main процес про зміну стану відтворення
+  notifyPlaybackState: (isPlaying) => {
+    ipcRenderer.send('playback-state-changed', isPlaying);
+  },
+  
   // Зберігання даних
   storage: {
     get: (key) => {

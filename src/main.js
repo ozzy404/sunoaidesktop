@@ -57,6 +57,7 @@ function createWindow() {
   });
 
   createTray();
+  setupThumbarButtons(false); // Start with play button (not playing)
 }
 
 function createTray() {
@@ -90,6 +91,57 @@ function createTray() {
 ipcMain.handle('minimize-window', () => mainWindow.minimize());
 ipcMain.handle('maximize-window', () => mainWindow.isMaximized() ? mainWindow.unmaximize() : mainWindow.maximize());
 ipcMain.handle('close-window', () => mainWindow.hide());
+
+// Update thumbnail toolbar when playback state changes
+ipcMain.on('playback-state-changed', (event, isPlaying) => {
+  setupThumbarButtons(isPlaying);
+});
+
+// ============ WINDOWS TASKBAR THUMBNAIL TOOLBAR ============
+function setupThumbarButtons(isPlaying) {
+  if (process.platform !== 'win32' || !mainWindow) return;
+  
+  const fs = require('fs');
+  
+  // Create icons from SVG for Windows thumbnail toolbar
+  const createIconFromSvg = (svgPath) => {
+    try {
+      const svgContent = fs.readFileSync(svgPath, 'utf8');
+      const dataUrl = `data:image/svg+xml;base64,${Buffer.from(svgContent).toString('base64')}`;
+      return nativeImage.createFromDataURL(dataUrl).resize({ width: 16, height: 16 });
+    } catch (e) {
+      console.log('Error loading icon:', e.message);
+      return nativeImage.createEmpty();
+    }
+  };
+  
+  const prevIcon = createIconFromSvg(path.join(__dirname, '../assets/prev.svg'));
+  const playIcon = createIconFromSvg(path.join(__dirname, '../assets/play.svg'));
+  const pauseIcon = createIconFromSvg(path.join(__dirname, '../assets/pause.svg'));
+  const nextIcon = createIconFromSvg(path.join(__dirname, '../assets/next.svg'));
+  
+  try {
+    mainWindow.setThumbarButtons([
+      {
+        tooltip: 'Попередній',
+        icon: prevIcon,
+        click: () => mainWindow.webContents.send('thumbar-prev')
+      },
+      {
+        tooltip: isPlaying ? 'Пауза' : 'Грати',
+        icon: isPlaying ? pauseIcon : playIcon,
+        click: () => mainWindow.webContents.send('thumbar-play-pause')
+      },
+      {
+        tooltip: 'Наступний',
+        icon: nextIcon,
+        click: () => mainWindow.webContents.send('thumbar-next')
+      }
+    ]);
+  } catch (e) {
+    console.log('Error setting thumbar buttons:', e.message);
+  }
+}
 
 // ============ АВТОРИЗАЦІЯ ЧЕРЕЗ СИСТЕМНИЙ БРАУЗЕР ============
 

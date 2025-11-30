@@ -25,6 +25,7 @@ body {
   color: var(--text-primary);
   overflow: hidden;
   user-select: none;
+  height: 100vh;
 }
 
 .hidden {
@@ -208,7 +209,9 @@ body {
 .tracks-container {
   flex: 1;
   overflow-y: auto;
+  overflow-x: hidden;
   padding: 12px;
+  padding-bottom: 140px; /* Space for fixed player bar */
 }
 
 .tracks-container::-webkit-scrollbar {
@@ -271,12 +274,44 @@ body {
   box-shadow: 0 0 20px var(--accent-glow);
 }
 
+.track-item .cover-wrapper {
+  position: relative;
+  width: 48px;
+  height: 48px;
+  flex-shrink: 0;
+}
+
 .track-item .cover {
   width: 48px;
   height: 48px;
   border-radius: 8px;
   object-fit: cover;
   background: var(--bg-tertiary);
+}
+
+.track-item .cover-overlay {
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: 100%;
+  height: 100%;
+  background: rgba(0, 0, 0, 0.6);
+  border-radius: 8px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  opacity: 0;
+  transition: opacity 0.2s;
+  color: white;
+}
+
+.track-item:hover .cover-overlay {
+  opacity: 1;
+}
+
+.track-item.playing .cover-overlay {
+  opacity: 1;
+  background: rgba(124, 58, 237, 0.7);
 }
 
 .track-item .info {
@@ -336,6 +371,11 @@ body {
   padding: 12px 16px;
   background: var(--bg-secondary);
   border-top: 1px solid var(--border);
+  position: fixed;
+  bottom: 56px; /* Height of progress container */
+  left: 0;
+  right: 0;
+  z-index: 50;
 }
 
 .now-playing {
@@ -455,6 +495,11 @@ body {
   gap: 10px;
   padding: 8px 16px 16px;
   background: var(--bg-secondary);
+  position: fixed;
+  bottom: 0;
+  left: 0;
+  right: 0;
+  z-index: 50;
 }
 
 .time-current,

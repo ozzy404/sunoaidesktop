@@ -45,7 +45,7 @@ class SunoPlayer {
 
     // Auth
     document.getElementById('btn-login')?.addEventListener('click', () => this.showAuthModal());
-    document.getElementById('btn-logout')?.addEventListener('click', () => this.logout());
+    document.getElementById('btn-logout')?.addEventListener('click', () => this.showSettingsModal());
 
     // Navigation tabs
     document.querySelectorAll('.nav-tab[data-tab]').forEach(tab => {
@@ -84,9 +84,32 @@ class SunoPlayer {
   setupAudioEvents() {
     this.audio.addEventListener('timeupdate', () => this.updateProgress());
     this.audio.addEventListener('ended', () => this.onTrackEnd());
-    this.audio.addEventListener('play', () => this.updatePlayButton(true));
-    this.audio.addEventListener('pause', () => this.updatePlayButton(false));
+    this.audio.addEventListener('play', () => {
+      this.updatePlayButton(true);
+      this.isPlaying = true;
+      this.renderTracks(); // Update play/pause icons on tracks
+      // Notify main process about playback state
+      if (window.electronAPI?.notifyPlaybackState) {
+        window.electronAPI.notifyPlaybackState(true);
+      }
+    });
+    this.audio.addEventListener('pause', () => {
+      this.updatePlayButton(false);
+      this.isPlaying = false;
+      this.renderTracks(); // Update play/pause icons on tracks
+      // Notify main process about playback state
+      if (window.electronAPI?.notifyPlaybackState) {
+        window.electronAPI.notifyPlaybackState(false);
+      }
+    });
     this.audio.addEventListener('loadedmetadata', () => this.updateDuration());
+    
+    // Listen for Windows taskbar thumbnail toolbar commands
+    if (window.electronAPI) {
+      window.electronAPI.onThumbarPrev?.(() => this.prevTrack());
+      window.electronAPI.onThumbarPlayPause?.(() => this.togglePlay());
+      window.electronAPI.onThumbarNext?.(() => this.nextTrack());
+    }
   }
 
   // ============ Authentication ============
@@ -310,13 +333,23 @@ class SunoPlayer {
     container.innerHTML = filteredTracks.map((track, index) => {
       const coverSrc = track.cover || defaultCover;
       const isCurrentTrack = this.currentTrackIndex === index;
+      const isPlayingThisTrack = isCurrentTrack && this.isPlaying;
+      
+      // SVG icons for play and pause
+      const playIcon = `<svg width="24" height="24" viewBox="0 0 24 24" fill="currentColor"><path d="M8 5v14l11-7z"/></svg>`;
+      const pauseIcon = `<svg width="24" height="24" viewBox="0 0 24 24" fill="currentColor"><path d="M6 19h4V5H6v14zm8-14v14h4V5h-4z"/></svg>`;
       
       return `
         <div class="track-item ${isCurrentTrack ? 'playing' : ''}" 
              data-index="${index}" data-id="${track.id}">
-          <img class="cover" src="${coverSrc}" alt="Cover" 
-               onerror="this.src='${defaultCover}'" 
-               loading="lazy">
+          <div class="cover-wrapper">
+            <img class="cover" src="${coverSrc}" alt="Cover" 
+                 onerror="this.src='${defaultCover}'" 
+                 loading="lazy">
+            <div class="cover-overlay">
+              ${isPlayingThisTrack ? pauseIcon : playIcon}
+            </div>
+          </div>
           <div class="info">
             <div class="title">${this.escapeHtml(track.title)}</div>
             <div class="meta">${this.escapeHtml(track.artist)} • ${this.formatTime(track.duration)}</div>
